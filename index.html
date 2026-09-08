@@ -5,7 +5,6 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Generador de Cierres de Salas (Versión Excel)</title>
     
-    <!-- Librerías para Excel y PDF -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.28/jspdf.plugin.autotable.min.js"></script>
@@ -74,7 +73,7 @@
         }
         th, td {
             border: 1px solid #ddd;
-            padding: 8px;
+            padding: 6px;
             text-align: center;
         }
         th { background-color: #e9ecef; }
@@ -94,7 +93,7 @@
         
         <div class="control-group">
             <div class="control-item" style="flex: 100%;">
-                <label>1. Carga el archivo de Excel del sistema (ej. Schedule.xlsx)</label>
+                <label>1. Carga el archivo de Excel del sistema</label>
                 <input type="file" id="excelInput" accept=".xlsx, .xls">
             </div>
             <div class="control-item">
@@ -104,8 +103,8 @@
             <div class="control-item">
                 <label>Tomar horario de:</label>
                 <select id="timeField">
-                    <option value="CREDITS_TIME">Inicio de Créditos (CREDITS_TIME)</option>
-                    <option value="END_TIME">Fin de Función (END_TIME)</option>
+                    <option value="CREDITS_TIME">Inicio de Créditos</option>
+                    <option value="END_TIME">Fin de Función</option>
                 </select>
             </div>
             <div class="control-item">
@@ -123,7 +122,7 @@
     </div>
 
     <div class="card" id="editorSection" style="display: none;">
-        <h2>2. Vista Previa (Datos Extraídos Automáticamente)</h2>
+        <h2>2. Vista Previa</h2>
         
         <table id="dataTable">
             <thead>
@@ -134,7 +133,6 @@
                 </tr>
             </thead>
             <tbody id="tableBody">
-                <!-- Se llena con JS -->
             </tbody>
         </table>
         
@@ -156,15 +154,13 @@
                 return;
             }
 
-            statusDiv.innerText = "Procesando archivo... ¡Es casi instantáneo!";
-            
+            statusDiv.innerText = "Procesando archivo...";
             const file = input.files[0];
             const reader = new FileReader();
 
             reader.onload = function(e) {
                 try {
                     const data = new Uint8Array(e.target.result);
-                    // Leemos el excel asegurándonos de extraer las fechas correctamente
                     const workbook = XLSX.read(data, {type: 'array', cellDates: true});
                     const sheetName = workbook.SheetNames[0];
                     const worksheet = workbook.Sheets[sheetName];
@@ -177,11 +173,8 @@
                         let timeVal = row[timeField];
 
                         if (auditorium && timeVal) {
-                            // Limpia "Sala 7 MacroXE" y extrae solo el "7"
                             let roomMatch = String(auditorium).match(/\d+/);
                             let roomNum = roomMatch ? roomMatch[0] : auditorium;
-                            
-                            // Analiza y formatea la hora
                             let timeObj = modifyTime(timeVal, offsetMinutes);
                             
                             if (timeObj) {
@@ -195,20 +188,17 @@
                     });
 
                     if (processedData.length === 0) {
-                        statusDiv.innerText = `No se encontraron datos en la columna '${timeField}' o 'AUDITORIUM'. Verifica el formato.`;
+                        statusDiv.innerText = `No se encontraron datos en la columna '${timeField}'.`;
                         return;
                     }
 
-                    // Ordena todas las funciones por hora (incluyendo la madrugada al final)
                     processedData.sort((a, b) => a.sortValue - b.sortValue);
-
-                    // Pinta la tabla web
                     document.getElementById('tableBody').innerHTML = '';
                     processedData.forEach(d => {
                         addRow(d.displayTime, d.room);
                     });
 
-                    statusDiv.innerText = "¡Datos extraídos con éxito al 100% de precisión!";
+                    statusDiv.innerText = "¡Datos extraídos con éxito!";
                     document.getElementById('editorSection').style.display = 'block';
 
                 } catch (error) {
@@ -216,30 +206,17 @@
                     statusDiv.innerText = "Hubo un error al leer el archivo Excel.";
                 }
             };
-
             reader.readAsArrayBuffer(file);
         }
 
-        // Función para aplicar ajuste de tiempo y convertir a 12 horas AM/PM
         function modifyTime(timeVal, offsetMinutes) {
-            let date;
+            let date = (timeVal instanceof Date) ? timeVal : new Date(timeVal);
+            if (isNaN(date.getTime())) return null; 
             
-            // Revisa si SheetJS lo leyó como un objeto Fecha o como Texto
-            if (timeVal instanceof Date) {
-                date = timeVal;
-            } else {
-                date = new Date(timeVal);
-            }
-
-            if (isNaN(date.getTime())) return null; // Salta celdas vacías o inválidas
-            
-            // Aplica los minutos extras (positivos o negativos)
             date.setMinutes(date.getMinutes() + offsetMinutes);
 
             let hours = date.getHours();
             let minutes = date.getMinutes();
-
-            // Manda las horas de madrugada (0 a 3 AM) al final de la lista sumándoles 24hrs invisibles
             let sortValue = (hours >= 0 && hours <= 3) ? hours + 24 : hours;
             sortValue = sortValue * 60 + minutes;
 
@@ -257,7 +234,6 @@
         function addRow(time, room) {
             const tbody = document.getElementById('tableBody');
             const tr = document.createElement('tr');
-            
             tr.innerHTML = `
                 <td><input type="text" class="edit-input time-input" value="${time}"></td>
                 <td><input type="number" class="edit-input room-input" value="${room}"></td>
@@ -268,21 +244,19 @@
 
         function generatePDF() {
             const minRoom = parseInt(document.getElementById('minRoom').value) || 1;
-            
             const times = document.querySelectorAll('.time-input');
             const rooms = document.querySelectorAll('.room-input');
             
             let validData = [];
             for (let i = 0; i < times.length; i++) {
                 let roomNum = parseInt(rooms[i].value);
-                // Filtra solo las salas que cumplen con el número mínimo elegido en los controles
                 if (times[i].value.trim() !== "" && !isNaN(roomNum) && roomNum >= minRoom) {
                     validData.push([times[i].value, roomNum]);
                 }
             }
 
             if(validData.length === 0) {
-                alert("No hay datos válidos para imprimir o ninguna sala cumple con el filtro.");
+                alert("No hay datos válidos para imprimir.");
                 return;
             }
 
@@ -294,67 +268,85 @@
             const dataCol1 = validData.slice(0, half);
             const dataCol2 = validData.slice(half);
 
-            // Configuraciones de estilo idénticas a tu foto 3
+            // Ajustes extremos de diseño para replicar la imagen original
             const tableStyles = {
                 theme: 'grid',
                 head: [], 
                 styles: {
                     font: 'helvetica',
-                    fontSize: 11,
+                    fontSize: 10,
                     textColor: [0, 0, 0],
                     lineColor: [0, 0, 0],
                     lineWidth: 0.3,
                     valign: 'middle',
-                    cellPadding: { top: 2, right: 3, bottom: 2, left: 3 }
+                    // Mínimo padding para evitar que salte de página
+                    cellPadding: { top: 1.2, right: 2, bottom: 1.2, left: 2 }
                 },
                 columnStyles: {
-                    0: { halign: 'left', cellWidth: 28 },
-                    1: { halign: 'right', cellWidth: 15, fontStyle: 'bold' } 
-                }
+                    0: { halign: 'left', cellWidth: 32 },
+                    1: { halign: 'right', cellWidth: 16, fontStyle: 'bold' } 
+                },
+                margin: { bottom: 2 } // Evita saltos de página prematuros
             };
 
             function drawBlock(startX) {
                 doc.setLineWidth(0.5);
-                doc.rect(startX, 15, 100, 8); 
-                doc.setFontSize(12);
-                doc.text(`♡      ${title}`, startX + 50, 20.5, { align: "center" });
+                // Dibujo del trapecio superior exactamente como la foto
+                doc.line(startX + 5, 10, startX + 95, 10); // Arriba
+                doc.line(startX, 16, startX + 100, 16); // Abajo
+                doc.line(startX, 16, startX + 5, 10); // Diagonal izquierda
+                doc.line(startX + 100, 16, startX + 95, 10); // Diagonal derecha
                 
-                doc.line(startX, 15, startX + 5, 10);
-                doc.line(startX + 100, 15, startX + 95, 10);
+                doc.setFontSize(11);
+                // Corazón en texto seguro para PDF
+                doc.text(`<3       ${title}`, startX + 50, 14, { align: "center" });
+
+                const startY = 20;
 
                 if (dataCol1.length > 0) {
                     doc.autoTable({
                         ...tableStyles,
                         body: dataCol1,
-                        startY: 28,
+                        startY: startY,
                         margin: { left: startX }
                     });
-                    const table1Height = doc.lastAutoTable.finalY - 28;
-                    doc.setLineWidth(0.8); 
-                    doc.rect(startX, 28, 43, table1Height);
+                    let finalY = doc.lastAutoTable.finalY;
+                    drawOuterBorder(startX, startY, 48, finalY - startY);
                 }
 
                 if (dataCol2.length > 0) {
                     doc.autoTable({
                         ...tableStyles,
                         body: dataCol2,
-                        startY: 28,
-                        margin: { left: startX + 48 } 
+                        startY: startY,
+                        margin: { left: startX + 52 } 
                     });
-                    const table2Height = doc.lastAutoTable.finalY - 28;
-                    doc.setLineWidth(0.8);
-                    doc.rect(startX + 48, 28, 43, table2Height);
+                    let finalY = doc.lastAutoTable.finalY;
+                    drawOuterBorder(startX + 52, startY, 48, finalY - startY);
                 }
             }
 
-            // Dibuja las dos copias idénticas en la hoja Horizontal
-            drawBlock(15); 
-            drawBlock(155);
+            // Función para dibujar el contorno grueso y el doblez inferior derecho
+            function drawOuterBorder(x, y, w, h) {
+                doc.setLineWidth(0.8);
+                doc.line(x, y, x + w, y); // Top
+                doc.line(x, y, x, y + h); // Left
+                
+                const corner = 4;
+                doc.line(x, y + h, x + w - corner, y + h); // Bottom short
+                doc.line(x + w, y, x + w, y + h - corner); // Right short
+                doc.line(x + w - corner, y + h, x + w, y + h - corner); // Diagonal cut
+                
+                doc.setLineWidth(0.3); // Líneas finas del doblez
+                doc.line(x + w - corner, y + h, x + w - corner, y + h - corner);
+                doc.line(x + w - corner, y + h - corner, x + w, y + h - corner);
+            }
 
-            doc.save("horarios_salidas_excel.pdf");
+            drawBlock(15); 
+            drawBlock(145);
+
+            doc.save("horarios_salidas_exacto.pdf");
         }
     </script>
-</body>
-</html>
 </body>
 </html>
