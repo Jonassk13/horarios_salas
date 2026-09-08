@@ -3,11 +3,10 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Generador de Cierres de Salas (Versión Excel)</title>
+    <title>Generador de Cierres de Salas (Versión Exacta)</title>
     
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.28/jspdf.plugin.autotable.min.js"></script>
 
     <style>
         body {
@@ -25,7 +24,7 @@
             box-shadow: 0 4px 6px rgba(0,0,0,0.1);
             margin-bottom: 20px;
         }
-        h1, h2 { color: #0056b3; font-size: 24px; margin-top: 0; }
+        h1, h2 { color: #0056b3; font-size: 22px; margin-top: 0; }
         .control-group {
             display: flex;
             gap: 15px;
@@ -40,14 +39,14 @@
             display: flex;
             flex-direction: column;
             flex: 1;
-            min-width: 180px;
+            min-width: 160px;
         }
-        label { font-weight: bold; margin-bottom: 5px; font-size: 14px; }
+        label { font-weight: bold; margin-bottom: 5px; font-size: 13px; }
         input, select {
             padding: 8px;
             border: 1px solid #ccc;
             border-radius: 4px;
-            font-size: 15px;
+            font-size: 14px;
             background: #fff;
         }
         button {
@@ -57,7 +56,7 @@
             padding: 10px 15px;
             border-radius: 5px;
             cursor: pointer;
-            font-size: 16px;
+            font-size: 15px;
             font-weight: bold;
             transition: 0.2s;
         }
@@ -81,7 +80,7 @@
             width: 100%;
             border: none;
             background: transparent;
-            font-size: 15px;
+            font-size: 14px;
             text-align: center;
         }
     </style>
@@ -89,11 +88,11 @@
 <body>
 
     <div class="card">
-        <h1>Generador de Horarios desde Excel</h1>
+        <h1>Generador de Horarios Exactos (Excel)</h1>
         
         <div class="control-group">
             <div class="control-item" style="flex: 100%;">
-                <label>1. Carga el archivo de Excel del sistema</label>
+                <label>1. Carga el archivo de Excel</label>
                 <input type="file" id="excelInput" accept=".xlsx, .xls">
             </div>
             <div class="control-item">
@@ -108,16 +107,20 @@
                 </select>
             </div>
             <div class="control-item">
-                <label>Ajuste de tiempo (Minutos)</label>
-                <input type="number" id="timeOffset" value="0" placeholder="Ej. 10 o -5">
+                <label>Filtrar desde la hora:</label>
+                <input type="time" id="startTimeFilter" value="15:30">
             </div>
             <div class="control-item">
-                <label>Imprimir desde Sala</label>
+                <label>Ajuste tiempo (Min)</label>
+                <input type="number" id="timeOffset" value="0" placeholder="Ej. 10">
+            </div>
+            <div class="control-item">
+                <label>Desde Sala</label>
                 <input type="number" id="minRoom" value="1" min="1" max="16">
             </div>
         </div>
 
-        <button onclick="processExcel()">Extraer Horarios de Excel</button>
+        <button onclick="processExcel()">Extraer Horarios</button>
         <div id="status"></div>
     </div>
 
@@ -127,7 +130,7 @@
         <table id="dataTable">
             <thead>
                 <tr>
-                    <th>Hora de Salida</th>
+                    <th>Hora</th>
                     <th>Sala</th>
                     <th>Acción</th>
                 </tr>
@@ -136,9 +139,7 @@
             </tbody>
         </table>
         
-        <div style="margin-top: 15px; display: flex; gap: 10px;">
-            <button onclick="addRow('', '')">+ Agregar Fila Manual</button>
-        </div>
+        <button onclick="addRow('', '')" style="margin-top: 10px;">+ Agregar Fila Manual</button>
         <button onclick="generatePDF()" class="btn-print">Imprimir Formato Doble (PDF)</button>
     </div>
 
@@ -147,6 +148,7 @@
             const input = document.getElementById('excelInput');
             const timeField = document.getElementById('timeField').value;
             const offsetMinutes = parseInt(document.getElementById('timeOffset').value) || 0;
+            const startTimeStr = document.getElementById('startTimeFilter').value; // Ej: "15:30"
             const statusDiv = document.getElementById('status');
 
             if (!input.files || input.files.length === 0) {
@@ -154,7 +156,14 @@
                 return;
             }
 
-            statusDiv.innerText = "Procesando archivo...";
+            // Convertir la hora de inicio a minutos para el filtro
+            let minStartMinutes = 0;
+            if (startTimeStr) {
+                let parts = startTimeStr.split(':');
+                minStartMinutes = parseInt(parts[0]) * 60 + parseInt(parts[1]);
+            }
+
+            statusDiv.innerText = "Procesando...";
             const file = input.files[0];
             const reader = new FileReader();
 
@@ -178,17 +187,21 @@
                             let timeObj = modifyTime(timeVal, offsetMinutes);
                             
                             if (timeObj) {
-                                processedData.push({
-                                    displayTime: timeObj.display,
-                                    sortValue: timeObj.sortValue,
-                                    room: roomNum
-                                });
+                                // Aplicar el filtro de hora (si sortValue es mayor o igual a minStartMinutes)
+                                // Nota: Las horas de madrugada (0-3 AM) tienen sortValue > 1440, por lo que siempre pasarán el filtro de 15:30.
+                                if (timeObj.sortValue >= minStartMinutes) {
+                                    processedData.push({
+                                        displayTime: timeObj.display,
+                                        sortValue: timeObj.sortValue,
+                                        room: roomNum
+                                    });
+                                }
                             }
                         }
                     });
 
                     if (processedData.length === 0) {
-                        statusDiv.innerText = `No se encontraron datos en la columna '${timeField}'.`;
+                        statusDiv.innerText = `No se encontraron datos después de las ${startTimeStr}.`;
                         return;
                     }
 
@@ -198,7 +211,7 @@
                         addRow(d.displayTime, d.room);
                     });
 
-                    statusDiv.innerText = "¡Datos extraídos con éxito!";
+                    statusDiv.innerText = "¡Datos extraídos y filtrados con éxito!";
                     document.getElementById('editorSection').style.display = 'block';
 
                 } catch (error) {
@@ -268,84 +281,72 @@
             const dataCol1 = validData.slice(0, half);
             const dataCol2 = validData.slice(half);
 
-            // Ajustes extremos de diseño para replicar la imagen original
-            const tableStyles = {
-                theme: 'grid',
-                head: [], 
-                styles: {
-                    font: 'helvetica',
-                    fontSize: 10,
-                    textColor: [0, 0, 0],
-                    lineColor: [0, 0, 0],
-                    lineWidth: 0.3,
-                    valign: 'middle',
-                    // Mínimo padding para evitar que salte de página
-                    cellPadding: { top: 1.2, right: 2, bottom: 1.2, left: 2 }
-                },
-                columnStyles: {
-                    0: { halign: 'left', cellWidth: 32 },
-                    1: { halign: 'right', cellWidth: 16, fontStyle: 'bold' } 
-                },
-                margin: { bottom: 2 } // Evita saltos de página prematuros
-            };
+            // Configuraciones de Dibujo Manual (Sin usar AutoTable)
+            const col1Width = 35;
+            const col2Width = 15;
+            const rowHeight = 7; 
+            const totalWidth = col1Width + col2Width;
 
-            function drawBlock(startX) {
+            function drawBlock(startX, dataCol) {
+                let currentY = 15;
+
+                // 1. Dibujar el Trapecio del Encabezado (Idéntico a la imagen)
                 doc.setLineWidth(0.5);
-                // Dibujo del trapecio superior exactamente como la foto
-                doc.line(startX + 5, 10, startX + 95, 10); // Arriba
-                doc.line(startX, 16, startX + 100, 16); // Abajo
-                doc.line(startX, 16, startX + 5, 10); // Diagonal izquierda
-                doc.line(startX + 100, 16, startX + 95, 10); // Diagonal derecha
-                
-                doc.setFontSize(11);
-                // Corazón en texto seguro para PDF
-                doc.text(`<3       ${title}`, startX + 50, 14, { align: "center" });
+                doc.line(startX + 4, currentY, startX + totalWidth - 4, currentY); // Línea superior
+                doc.line(startX + 4, currentY, startX, currentY + 6); // Diagonal Izquierda
+                doc.line(startX + totalWidth - 4, currentY, startX + totalWidth, currentY + 6); // Diagonal Derecha
+                doc.line(startX, currentY + 6, startX + totalWidth, currentY + 6); // Línea inferior
 
-                const startY = 20;
+                doc.setFont("helvetica", "normal");
+                doc.setFontSize(10);
+                doc.text(title, startX + (totalWidth / 2), currentY + 4, { align: "center" });
 
-                if (dataCol1.length > 0) {
-                    doc.autoTable({
-                        ...tableStyles,
-                        body: dataCol1,
-                        startY: startY,
-                        margin: { left: startX }
-                    });
-                    let finalY = doc.lastAutoTable.finalY;
-                    drawOuterBorder(startX, startY, 48, finalY - startY);
+                // 2. Dibujar las filas
+                currentY += 12; // Espacio entre encabezado y tabla
+                const tableStartY = currentY;
+
+                doc.setLineWidth(0.3); // Grosor de las líneas internas
+
+                for (let i = 0; i < dataCol.length; i++) {
+                    let y = currentY + (i * rowHeight);
+                    
+                    // Celdas internas
+                    doc.rect(startX, y, col1Width, rowHeight); // Celda Hora
+                    doc.rect(startX + col1Width, y, col2Width, rowHeight); // Celda Sala
+                    
+                    // Textos
+                    doc.setFont("helvetica", "normal");
+                    doc.text(dataCol[i][0], startX + 3, y + 5); // Escribir Hora
+                    
+                    doc.setFont("helvetica", "bold");
+                    doc.text(dataCol[i][1].toString(), startX + col1Width + (col2Width / 2), y + 5, { align: "center" }); // Escribir Sala
                 }
 
-                if (dataCol2.length > 0) {
-                    doc.autoTable({
-                        ...tableStyles,
-                        body: dataCol2,
-                        startY: startY,
-                        margin: { left: startX + 52 } 
-                    });
-                    let finalY = doc.lastAutoTable.finalY;
-                    drawOuterBorder(startX + 52, startY, 48, finalY - startY);
-                }
-            }
+                // 3. Dibujar Borde Exterior Grueso
+                const tableHeight = dataCol.length * rowHeight;
+                doc.setLineWidth(1.0); // Borde grueso
+                doc.rect(startX, tableStartY, totalWidth, tableHeight);
 
-            // Función para dibujar el contorno grueso y el doblez inferior derecho
-            function drawOuterBorder(x, y, w, h) {
-                doc.setLineWidth(0.8);
-                doc.line(x, y, x + w, y); // Top
-                doc.line(x, y, x, y + h); // Left
-                
+                // Dibujar el detalle del doblez en la esquina inferior derecha
                 const corner = 4;
-                doc.line(x, y + h, x + w - corner, y + h); // Bottom short
-                doc.line(x + w, y, x + w, y + h - corner); // Right short
-                doc.line(x + w - corner, y + h, x + w, y + h - corner); // Diagonal cut
+                doc.setDrawColor(255, 255, 255); // Usar blanco para borrar la esquina
+                doc.line(startX + totalWidth - corner, tableStartY + tableHeight, startX + totalWidth, tableStartY + tableHeight);
+                doc.line(startX + totalWidth, tableStartY + tableHeight - corner, startX + totalWidth, tableStartY + tableHeight);
                 
-                doc.setLineWidth(0.3); // Líneas finas del doblez
-                doc.line(x + w - corner, y + h, x + w - corner, y + h - corner);
-                doc.line(x + w - corner, y + h - corner, x + w, y + h - corner);
+                doc.setDrawColor(0, 0, 0); // Regresar a negro
+                doc.setLineWidth(1.0);
+                doc.line(startX + totalWidth - corner, tableStartY + tableHeight, startX + totalWidth, tableStartY + tableHeight - corner); // Corte en diagonal
+
+                doc.setLineWidth(0.3);
+                doc.line(startX + totalWidth - corner, tableStartY + tableHeight, startX + totalWidth - corner, tableStartY + tableHeight - corner);
+                doc.line(startX + totalWidth - corner, tableStartY + tableHeight - corner, startX + totalWidth, tableStartY + tableHeight - corner);
             }
 
-            drawBlock(15); 
-            drawBlock(145);
+            // Dibuja las dos copias idénticas
+            drawBlock(25, dataCol1); 
+            drawBlock(145, dataCol2);
 
-            doc.save("horarios_salidas_exacto.pdf");
+            doc.save("horarios_exactos.pdf");
         }
     </script>
 </body>
