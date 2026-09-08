@@ -5,8 +5,6 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Generador de Cierres de Salas</title>
     
-    <!-- Librerías para OCR y PDF -->
-    <script src="https://cdn.jsdelivr.net/npm/tesseract.js@4/dist/tesseract.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.28/jspdf.plugin.autotable.min.js"></script>
 
@@ -26,13 +24,29 @@
             box-shadow: 0 4px 6px rgba(0,0,0,0.1);
             margin-bottom: 20px;
         }
-        h1, h2 { color: #0056b3; }
-        input[type="file"], .title-input {
-            display: block;
-            margin-bottom: 15px;
-            width: 100%;
-            max-width: 300px;
+        h1, h2 { color: #0056b3; font-size: 24px; margin-top: 0; }
+        .control-group {
+            display: flex;
+            gap: 15px;
+            margin-bottom: 20px;
+            flex-wrap: wrap;
+            background: #f8f9fa;
+            padding: 15px;
+            border-radius: 6px;
+            border: 1px solid #ddd;
+        }
+        .control-item {
+            display: flex;
+            flex-direction: column;
+            flex: 1;
+            min-width: 150px;
+        }
+        label { font-weight: bold; margin-bottom: 5px; font-size: 14px; }
+        input, select {
             padding: 8px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            font-size: 15px;
         }
         button {
             background-color: #0056b3;
@@ -42,10 +56,12 @@
             border-radius: 5px;
             cursor: pointer;
             font-size: 16px;
+            font-weight: bold;
+            transition: 0.2s;
         }
         button:hover { background-color: #004494; }
-        button:disabled { background-color: #ccc; cursor: not-allowed; }
-        #status { margin-top: 10px; font-weight: bold; color: #d9534f; }
+        .btn-print { background-color: #28a745; width: 100%; margin-top: 10px;}
+        .btn-print:hover { background-color: #218838; }
         
         table {
             width: 100%;
@@ -54,205 +70,215 @@
         }
         th, td {
             border: 1px solid #ddd;
-            padding: 10px;
+            padding: 8px;
             text-align: center;
         }
-        th { background-color: #f8f9fa; }
-        input.edit-input {
-            width: 100%;
-            border: none;
-            background: transparent;
-            font-size: 15px;
-            text-align: center;
-        }
-        .controls {
-            display: flex;
-            gap: 10px;
-            margin-top: 15px;
-        }
+        th { background-color: #e9ecef; }
     </style>
 </head>
 <body>
 
     <div class="card">
-        <h1>Generador de Horarios de Cierre</h1>
-        <p>1. Sube la captura de pantalla de las funciones.</p>
-        <input type="file" id="imageInput" accept="image/*">
-        <button id="processBtn" onclick="processImage()">Extraer Horarios</button>
-        <div id="status"></div>
+        <h1>Control de Horarios de Salida</h1>
+        
+        <div class="control-group">
+            <div class="control-item">
+                <label>Título del día</label>
+                <input type="text" id="dayTitle" value="MARTES :)" placeholder="Ej. MARTES :)">
+            </div>
+            <div class="control-item">
+                <label>Mostrar desde Sala</label>
+                <input type="number" id="minRoom" value="1" min="1" max="16">
+            </div>
+            <div class="control-item">
+                <label>Ajuste de tiempo (Minutos)</label>
+                <input type="number" id="timeOffset" value="0" placeholder="Ej. 10 o -5">
+                <small style="color: #666; font-size: 12px; margin-top: 4px;">Usa negativos para restar tiempo.</small>
+            </div>
+        </div>
+
+        <button onclick="updateTable()">Aplicar Filtros y Actualizar Lista</button>
+        <button onclick="generatePDF()" class="btn-print">Imprimir Formato Doble (PDF)</button>
     </div>
 
-    <div class="card" id="editorSection" style="display: none;">
-        <h2>2. Verifica y Completa</h2>
-        <p>Añade el título del día (ej. "miércoles 3") y rellena el número de personas. El PDF final se dividirá en dos columnas grandes automáticamente.</p>
-        
-        <input type="text" id="dayTitle" class="title-input" placeholder="Ej. miércoles 3">
-
+    <div class="card">
+        <h2>Vista Previa de Datos</h2>
         <table id="dataTable">
             <thead>
                 <tr>
-                    <th>Hora de Cierre</th>
-                    <th>Personas (Opcional)</th>
+                    <th>Hora (Ajustada)</th>
                     <th>Sala</th>
-                    <th>Acción</th>
                 </tr>
             </thead>
             <tbody id="tableBody">
-                <!-- Filas generadas dinámicamente -->
+                <!-- Se llena con JS -->
             </tbody>
         </table>
-        
-        <div class="controls">
-            <button onclick="addRow('', '', '')">+ Agregar Fila</button>
-            <button onclick="generatePDF()" style="background-color: #28a745;">Imprimir Hoja Carta (Diseño de 2 Columnas)</button>
-        </div>
     </div>
 
     <script>
-        async function processImage() {
-            const input = document.getElementById('imageInput');
-            const statusDiv = document.getElementById('status');
-            const processBtn = document.getElementById('processBtn');
+        // Datos extraídos directamente de los diagramas (Salas 1 a 16)
+        const rawData = [
+            {time: '18:14', room: 1}, {time: '20:19', room: 1}, {time: '22:25', room: 1}, {time: '00:25', room: 1},
+            {time: '17:30', room: 2}, {time: '19:50', room: 2}, {time: '23:20', room: 2},
+            {time: '16:21', room: 3}, {time: '18:41', room: 3}, {time: '21:06', room: 3}, {time: '23:36', room: 3},
+            {time: '18:58', room: 4}, {time: '22:15', room: 4}, {time: '00:39', room: 4},
+            {time: '18:54', room: 5}, {time: '21:25', room: 5}, {time: '00:09', room: 5},
+            {time: '18:27', room: 6}, {time: '21:27', room: 6}, {time: '23:56', room: 6},
+            {time: '17:42', room: 7}, {time: '20:47', room: 7}, {time: '00:11', room: 7},
+            {time: '17:15', room: 8}, {time: '19:57', room: 8}, {time: '22:55', room: 8},
+            {time: '16:47', room: 9}, {time: '19:17', room: 9}, {time: '21:32', room: 9}, {time: '23:52', room: 9},
+            {time: '17:45', room: 10}, {time: '20:12', room: 10}, {time: '22:45', room: 10},
+            {time: '18:31', room: 11}, {time: '21:17', room: 11}, {time: '23:51', room: 11},
+            {time: '17:55', room: 12}, {time: '20:14', room: 12}, {time: '23:08', room: 12},
+            {time: '16:24', room: 13}, {time: '19:55', room: 13}, {time: '21:35', room: 13}, {time: '23:45', room: 13},
+            {time: '18:57', room: 14}, {time: '22:17', room: 14}, {time: '00:37', room: 14},
+            {time: '19:27', room: 15}, {time: '21:54', room: 15}, {time: '00:29', room: 15},
+            {time: '17:23', room: 16}, {time: '19:52', room: 16}, {time: '22:07', room: 16}, {time: '01:05', room: 16}
+        ];
 
-            if (!input.files || input.files.length === 0) {
-                alert("Por favor selecciona una imagen primero.");
-                return;
-            }
+        let processedData = [];
 
-            const file = input.files[0];
-            statusDiv.innerText = "Analizando imagen... esto puede tomar unos segundos.";
-            processBtn.disabled = true;
-
-            try {
-                const { data: { text } } = await Tesseract.recognize(file, 'spa');
-                
-                const timeRegex = /([0-1]?[0-9]|2[0-3]):[0-5][0-9]/g;
-                let foundTimes = text.match(timeRegex) || [];
-                
-                document.getElementById('tableBody').innerHTML = '';
-                
-                if(foundTimes.length === 0) {
-                    statusDiv.innerText = "No se detectaron horas claras. Por favor ingresa los datos manualmente.";
-                    addRow("3:39 PM", "", "5");
-                } else {
-                    statusDiv.innerText = "Análisis completado. Verifica los datos y agrega el número de personas.";
-                    foundTimes.forEach((time, index) => {
-                        addRow(formatAMPM(time), "", (index + 1).toString()); 
-                    });
-                }
-
-                document.getElementById('editorSection').style.display = 'block';
-
-            } catch (error) {
-                console.error(error);
-                statusDiv.innerText = "Hubo un error al procesar la imagen.";
-            } finally {
-                processBtn.disabled = false;
-            }
-        }
-
-        function formatAMPM(time24) {
-            let [hours, minutes] = time24.split(':');
-            hours = parseInt(hours, 10);
-            const ampm = hours >= 12 ? 'PM' : 'AM';
-            hours = hours % 12;
-            hours = hours ? hours : 12; 
-            return `${hours}:${minutes} ${ampm}`;
-        }
-
-        function addRow(time, people, room) {
-            const tbody = document.getElementById('tableBody');
-            const tr = document.createElement('tr');
+        // Función para sumar/restar minutos y manejar el formato de 24h a 12h
+        function modifyTime(timeStr, offsetMinutes) {
+            let [hours, minutes] = timeStr.split(':').map(Number);
             
-            tr.innerHTML = `
-                <td><input type="text" class="edit-input time-input" value="${time}" placeholder="Ej. 10:00 PM"></td>
-                <td><input type="text" class="edit-input people-input" value="${people}" placeholder="Ej. 15"></td>
-                <td><input type="text" class="edit-input room-input" value="${room}" placeholder="Ej. 14"></td>
-                <td><button onclick="this.parentElement.parentElement.remove()" style="background-color: #dc3545; padding: 5px 10px;">X</button></td>
-            `;
-            tbody.appendChild(tr);
+            // Convertir a minutos totales desde inicio del día (ajuste para madrugada)
+            let totalMinutes = hours * 60 + minutes;
+            if (hours >= 0 && hours <= 3) totalMinutes += 24 * 60; // Tratar madrugada como fin del día
+            
+            totalMinutes += parseInt(offsetMinutes) || 0;
+            
+            let newHours = Math.floor(totalMinutes / 60) % 24;
+            let newMinutes = totalMinutes % 60;
+            
+            // Guardamos el valor numérico para ordenar correctamente
+            let sortValue = (newHours >= 0 && newHours <= 3) ? newHours + 24 : newHours;
+            sortValue = sortValue * 60 + newMinutes;
+
+            // Formato 12h AM/PM
+            const ampm = newHours >= 12 ? 'PM' : 'AM';
+            let formattedHours = newHours % 12;
+            formattedHours = formattedHours ? formattedHours : 12; 
+            let formattedMinutes = newMinutes < 10 ? '0' + newMinutes : newMinutes;
+            
+            return {
+                display: `${formattedHours}:${formattedMinutes} ${ampm}`,
+                sortValue: sortValue
+            };
+        }
+
+        function updateTable() {
+            const minRoom = parseInt(document.getElementById('minRoom').value) || 1;
+            const timeOffset = parseInt(document.getElementById('timeOffset').value) || 0;
+            
+            // 1. Filtrar por sala
+            let filtered = rawData.filter(d => d.room >= minRoom);
+            
+            // 2. Modificar tiempo y preparar para ordenar
+            processedData = filtered.map(d => {
+                let timeObj = modifyTime(d.time, timeOffset);
+                return {
+                    original: d.time,
+                    displayTime: timeObj.display,
+                    sortValue: timeObj.sortValue,
+                    room: d.room
+                };
+            });
+            
+            // 3. Ordenar cronológicamente
+            processedData.sort((a, b) => a.sortValue - b.sortValue);
+            
+            // 4. Mostrar en pantalla
+            const tbody = document.getElementById('tableBody');
+            tbody.innerHTML = '';
+            processedData.forEach(d => {
+                tbody.innerHTML += `<tr><td>${d.displayTime}</td><td><b>${d.room}</b></td></tr>`;
+            });
         }
 
         function generatePDF() {
+            if (processedData.length === 0) updateTable();
+
             const { jsPDF } = window.jspdf;
-            const doc = new jsPDF({ orientation: 'p', unit: 'mm', format: 'letter' });
-
-            const title = document.getElementById('dayTitle').value || '';
-            const times = document.querySelectorAll('.time-input');
-            const peoples = document.querySelectorAll('.people-input');
-            const rooms = document.querySelectorAll('.room-input');
+            // Hoja tamaño carta, orientación Horizontal (Landscape) para emular la imagen de referencia
+            const doc = new jsPDF({ orientation: 'l', unit: 'mm', format: 'letter' });
             
-            let allData = [];
-            for (let i = 0; i < times.length; i++) {
-                if (times[i].value.trim() !== "" || rooms[i].value.trim() !== "") {
-                    allData.push([times[i].value, peoples[i].value, rooms[i].value]);
-                }
-            }
+            const title = document.getElementById('dayTitle').value || 'MARTES :)';
+            
+            // Dividir los datos en dos mitades para las dos columnas internas de CADA copia
+            const half = Math.ceil(processedData.length / 2);
+            const dataCol1 = processedData.slice(0, half).map(d => [d.displayTime, d.room]);
+            const dataCol2 = processedData.slice(half).map(d => [d.displayTime, d.room]);
 
-            // Título superior con el icono del corazón simulando el original
-            doc.setFontSize(14);
-            doc.setFont("helvetica", "normal");
-            if(title) {
-                doc.text("♡   " + title, 105, 20, { align: "center" });
-            }
-
-            // Dividir los datos en dos mitades para las dos columnas
-            const half = Math.ceil(allData.length / 2);
-            const leftData = allData.slice(0, half);
-            const rightData = allData.slice(half);
-
-            // Estilos globales de la tabla para que coincidan con la foto
             const tableStyles = {
                 theme: 'grid',
-                head: [], // Sin encabezado impreso
+                head: [], 
                 styles: {
                     font: 'helvetica',
-                    fontSize: 12,
+                    fontSize: 11,
                     textColor: [0, 0, 0],
                     lineColor: [0, 0, 0],
-                    lineWidth: 0.3, // Líneas internas delgadas
+                    lineWidth: 0.3,
                     valign: 'middle',
-                    cellPadding: { top: 3, right: 3, bottom: 3, left: 3 }
+                    cellPadding: { top: 2, right: 3, bottom: 2, left: 3 }
                 },
                 columnStyles: {
-                    0: { halign: 'center', cellWidth: 35 }, // Hora
-                    1: { halign: 'center', cellWidth: 25 }, // Personas
-                    2: { halign: 'right', cellWidth: 20 }   // Sala
+                    0: { halign: 'left', cellWidth: 28 },
+                    1: { halign: 'right', cellWidth: 15, fontStyle: 'bold' } 
                 }
             };
 
-            // RENDERIZAR COLUMNA IZQUIERDA
-            if (leftData.length > 0) {
-                doc.autoTable({
-                    ...tableStyles,
-                    body: leftData,
-                    startY: 30,
-                    margin: { left: 25, right: 111 } // Fuerza a que dibuje en el lado izquierdo
-                });
+            // Función para dibujar una de las dos "mitades" de la hoja
+            function drawBlock(startX) {
+                // Dibujar encabezado con estilo de caja recortada
+                doc.setLineWidth(0.5);
+                doc.rect(startX, 15, 100, 8); 
+                doc.setFontSize(12);
+                doc.text(`♡      ${title}`, startX + 50, 20.5, { align: "center" });
                 
-                // Dibujar contorno exterior grueso para la tabla izquierda
-                const leftTableHeight = doc.lastAutoTable.finalY - 30;
-                doc.setLineWidth(1.2); 
-                doc.rect(25, 30, 80, leftTableHeight); 
+                // Líneas decorativas en las esquinas simulando los dobleces de la imagen
+                doc.line(startX, 15, startX + 5, 10);
+                doc.line(startX + 100, 15, startX + 95, 10);
+
+                // Columna interna 1
+                if (dataCol1.length > 0) {
+                    doc.autoTable({
+                        ...tableStyles,
+                        body: dataCol1,
+                        startY: 28,
+                        margin: { left: startX }
+                    });
+                    const table1Height = doc.lastAutoTable.finalY - 28;
+                    doc.setLineWidth(0.8); 
+                    doc.rect(startX, 28, 43, table1Height); // Borde exterior grueso col 1
+                }
+
+                // Columna interna 2
+                if (dataCol2.length > 0) {
+                    doc.autoTable({
+                        ...tableStyles,
+                        body: dataCol2,
+                        startY: 28,
+                        margin: { left: startX + 48 } // Espacio entre las dos columnas
+                    });
+                    const table2Height = doc.lastAutoTable.finalY - 28;
+                    doc.setLineWidth(0.8);
+                    doc.rect(startX + 48, 28, 43, table2Height); // Borde exterior grueso col 2
+                }
             }
 
-            // RENDERIZAR COLUMNA DERECHA
-            if (rightData.length > 0) {
-                doc.autoTable({
-                    ...tableStyles,
-                    body: rightData,
-                    startY: 30,
-                    margin: { left: 111, right: 25 } // Fuerza a que dibuje en el lado derecho
-                });
+            // Dibujar la copia de la IZQUIERDA
+            drawBlock(15); 
+            
+            // Dibujar la copia de la DERECHA (idéntica)
+            drawBlock(155);
 
-                // Dibujar contorno exterior grueso para la tabla derecha
-                const rightTableHeight = doc.lastAutoTable.finalY - 30;
-                doc.setLineWidth(1.2);
-                doc.rect(111, 30, 80, rightTableHeight);
-            }
-
-            doc.save("horarios_cierre_2_columnas.pdf");
+            doc.save("horarios_salidas.pdf");
         }
+
+        // Inicializar tabla al cargar la página
+        window.onload = updateTable;
     </script>
 </body>
 </html>
