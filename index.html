@@ -3,9 +3,10 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Generador de Cierres de Salas</title>
+    <title>Generador de Cierres de Salas (Versión Excel)</title>
     
-    <script src="https://cdn.jsdelivr.net/npm/tesseract.js@4/dist/tesseract.min.js"></script>
+    <!-- Librerías para Excel y PDF -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.28/jspdf.plugin.autotable.min.js"></script>
 
@@ -40,7 +41,7 @@
             display: flex;
             flex-direction: column;
             flex: 1;
-            min-width: 150px;
+            min-width: 180px;
         }
         label { font-weight: bold; margin-bottom: 5px; font-size: 14px; }
         input, select {
@@ -48,6 +49,7 @@
             border: 1px solid #ccc;
             border-radius: 4px;
             font-size: 15px;
+            background: #fff;
         }
         button {
             background-color: #0056b3;
@@ -61,7 +63,6 @@
             transition: 0.2s;
         }
         button:hover { background-color: #004494; }
-        button:disabled { background-color: #ccc; cursor: not-allowed; }
         .btn-print { background-color: #28a745; width: 100%; margin-top: 10px;}
         .btn-print:hover { background-color: #218838; }
         #status { margin-top: 10px; font-weight: bold; color: #d9534f; }
@@ -89,21 +90,27 @@
 <body>
 
     <div class="card">
-        <h1>Control de Horarios de Salida</h1>
+        <h1>Generador de Horarios desde Excel</h1>
         
         <div class="control-group">
             <div class="control-item" style="flex: 100%;">
-                <label>1. Sube las imágenes de las funciones (puedes seleccionar varias)</label>
-                <input type="file" id="imageInput" accept="image/*" multiple>
+                <label>1. Carga el archivo de Excel del sistema (ej. Schedule.xlsx)</label>
+                <input type="file" id="excelInput" accept=".xlsx, .xls">
             </div>
             <div class="control-item">
                 <label>Título del día</label>
                 <input type="text" id="dayTitle" value="MARTES :)" placeholder="Ej. MARTES :)">
             </div>
             <div class="control-item">
+                <label>Tomar horario de:</label>
+                <select id="timeField">
+                    <option value="CREDITS_TIME">Inicio de Créditos (CREDITS_TIME)</option>
+                    <option value="END_TIME">Fin de Función (END_TIME)</option>
+                </select>
+            </div>
+            <div class="control-item">
                 <label>Ajuste de tiempo (Minutos)</label>
                 <input type="number" id="timeOffset" value="0" placeholder="Ej. 10 o -5">
-                <small style="color: #666; font-size: 12px; margin-top: 4px;">Se aplicará al extraer las horas.</small>
             </div>
             <div class="control-item">
                 <label>Imprimir desde Sala</label>
@@ -111,19 +118,18 @@
             </div>
         </div>
 
-        <button id="processBtn" onclick="processImages()">Extraer Horarios de Imágenes</button>
+        <button onclick="processExcel()">Extraer Horarios de Excel</button>
         <div id="status"></div>
     </div>
 
     <div class="card" id="editorSection" style="display: none;">
-        <h2>2. Verifica, Asigna Salas y Corrige</h2>
-        <p><i>Asigna la sala correspondiente a cada horario. El filtro de "Imprimir desde Sala" se aplicará al generar el PDF.</i></p>
+        <h2>2. Vista Previa (Datos Extraídos Automáticamente)</h2>
         
         <table id="dataTable">
             <thead>
                 <tr>
-                    <th>Hora (Ya ajustada)</th>
-                    <th>Sala (Ingresa el número)</th>
+                    <th>Hora de Salida</th>
+                    <th>Sala</th>
                     <th>Acción</th>
                 </tr>
             </thead>
@@ -139,81 +145,108 @@
     </div>
 
     <script>
-        async function processImages() {
-            const input = document.getElementById('imageInput');
-            const statusDiv = document.getElementById('status');
-            const processBtn = document.getElementById('processBtn');
+        function processExcel() {
+            const input = document.getElementById('excelInput');
+            const timeField = document.getElementById('timeField').value;
             const offsetMinutes = parseInt(document.getElementById('timeOffset').value) || 0;
+            const statusDiv = document.getElementById('status');
 
             if (!input.files || input.files.length === 0) {
-                alert("Por favor selecciona al menos una imagen.");
+                alert("Por favor selecciona tu archivo de Excel.");
                 return;
             }
 
-            statusDiv.innerText = `Analizando ${input.files.length} imagen(es)... esto tomará unos segundos.`;
-            processBtn.disabled = true;
+            statusDiv.innerText = "Procesando archivo... ¡Es casi instantáneo!";
+            
+            const file = input.files[0];
+            const reader = new FileReader();
 
-            try {
-                let allExtractedTimes = [];
-
-                // Leer todas las imágenes seleccionadas
-                for (let i = 0; i < input.files.length; i++) {
-                    const file = input.files[i];
-                    const { data: { text } } = await Tesseract.recognize(file, 'spa');
+            reader.onload = function(e) {
+                try {
+                    const data = new Uint8Array(e.target.result);
+                    // Leemos el excel asegurándonos de extraer las fechas correctamente
+                    const workbook = XLSX.read(data, {type: 'array', cellDates: true});
+                    const sheetName = workbook.SheetNames[0];
+                    const worksheet = workbook.Sheets[sheetName];
+                    const json = XLSX.utils.sheet_to_json(worksheet);
                     
-                    // Buscar patrones de hora HH:MM (24 horas)
-                    const timeRegex = /([0-1]?[0-9]|2[0-3]):[0-5][0-9]/g;
-                    let foundTimes = text.match(timeRegex) || [];
-                    allExtractedTimes.push(...foundTimes);
-                }
-                
-                document.getElementById('tableBody').innerHTML = '';
-                
-                if(allExtractedTimes.length === 0) {
-                    statusDiv.innerText = "No se detectaron horas claras. Por favor ingresa los datos manualmente.";
-                    addRow("10:00 PM", "");
-                } else {
-                    statusDiv.innerText = "Análisis completado. Por favor, asigna el número de sala a cada hora.";
-                    
-                    // Procesar, aplicar ajuste de minutos y ordenar
-                    let processedTimes = allExtractedTimes.map(timeStr => modifyTime(timeStr, offsetMinutes));
-                    processedTimes.sort((a, b) => a.sortValue - b.sortValue);
+                    let processedData = [];
 
-                    processedTimes.forEach(timeObj => {
-                        addRow(timeObj.display, ""); 
+                    json.forEach(row => {
+                        let auditorium = row['AUDITORIUM'];
+                        let timeVal = row[timeField];
+
+                        if (auditorium && timeVal) {
+                            // Limpia "Sala 7 MacroXE" y extrae solo el "7"
+                            let roomMatch = String(auditorium).match(/\d+/);
+                            let roomNum = roomMatch ? roomMatch[0] : auditorium;
+                            
+                            // Analiza y formatea la hora
+                            let timeObj = modifyTime(timeVal, offsetMinutes);
+                            
+                            if (timeObj) {
+                                processedData.push({
+                                    displayTime: timeObj.display,
+                                    sortValue: timeObj.sortValue,
+                                    room: roomNum
+                                });
+                            }
+                        }
                     });
+
+                    if (processedData.length === 0) {
+                        statusDiv.innerText = `No se encontraron datos en la columna '${timeField}' o 'AUDITORIUM'. Verifica el formato.`;
+                        return;
+                    }
+
+                    // Ordena todas las funciones por hora (incluyendo la madrugada al final)
+                    processedData.sort((a, b) => a.sortValue - b.sortValue);
+
+                    // Pinta la tabla web
+                    document.getElementById('tableBody').innerHTML = '';
+                    processedData.forEach(d => {
+                        addRow(d.displayTime, d.room);
+                    });
+
+                    statusDiv.innerText = "¡Datos extraídos con éxito al 100% de precisión!";
+                    document.getElementById('editorSection').style.display = 'block';
+
+                } catch (error) {
+                    console.error(error);
+                    statusDiv.innerText = "Hubo un error al leer el archivo Excel.";
                 }
+            };
 
-                document.getElementById('editorSection').style.display = 'block';
-
-            } catch (error) {
-                console.error(error);
-                statusDiv.innerText = "Hubo un error al procesar las imágenes.";
-            } finally {
-                processBtn.disabled = false;
-            }
+            reader.readAsArrayBuffer(file);
         }
 
         // Función para aplicar ajuste de tiempo y convertir a 12 horas AM/PM
-        function modifyTime(timeStr, offsetMinutes) {
-            let [hours, minutes] = timeStr.split(':').map(Number);
+        function modifyTime(timeVal, offsetMinutes) {
+            let date;
             
-            let totalMinutes = hours * 60 + minutes;
-            if (hours >= 0 && hours <= 3) totalMinutes += 24 * 60; // Tratar madrugada como fin del día
-            
-            totalMinutes += offsetMinutes;
-            
-            let newHours = Math.floor(totalMinutes / 60) % 24;
-            let newMinutes = (totalMinutes % 60 + 60) % 60; // Manejo de minutos negativos
-            if (totalMinutes < 0) newHours = (newHours + 24) % 24;
+            // Revisa si SheetJS lo leyó como un objeto Fecha o como Texto
+            if (timeVal instanceof Date) {
+                date = timeVal;
+            } else {
+                date = new Date(timeVal);
+            }
 
-            let sortValue = (newHours >= 0 && newHours <= 3) ? newHours + 24 : newHours;
-            sortValue = sortValue * 60 + newMinutes;
+            if (isNaN(date.getTime())) return null; // Salta celdas vacías o inválidas
+            
+            // Aplica los minutos extras (positivos o negativos)
+            date.setMinutes(date.getMinutes() + offsetMinutes);
 
-            const ampm = newHours >= 12 ? 'PM' : 'AM';
-            let formattedHours = newHours % 12;
+            let hours = date.getHours();
+            let minutes = date.getMinutes();
+
+            // Manda las horas de madrugada (0 a 3 AM) al final de la lista sumándoles 24hrs invisibles
+            let sortValue = (hours >= 0 && hours <= 3) ? hours + 24 : hours;
+            sortValue = sortValue * 60 + minutes;
+
+            const ampm = hours >= 12 ? 'PM' : 'AM';
+            let formattedHours = hours % 12;
             formattedHours = formattedHours ? formattedHours : 12; 
-            let formattedMinutes = newMinutes < 10 ? '0' + newMinutes : newMinutes;
+            let formattedMinutes = minutes < 10 ? '0' + minutes : minutes;
             
             return {
                 display: `${formattedHours}:${formattedMinutes} ${ampm}`,
@@ -226,8 +259,8 @@
             const tr = document.createElement('tr');
             
             tr.innerHTML = `
-                <td><input type="text" class="edit-input time-input" value="${time}" placeholder="Ej. 10:00 PM"></td>
-                <td><input type="number" class="edit-input room-input" value="${room}" placeholder="Número de Sala"></td>
+                <td><input type="text" class="edit-input time-input" value="${time}"></td>
+                <td><input type="number" class="edit-input room-input" value="${room}"></td>
                 <td><button onclick="this.parentElement.parentElement.remove()" style="background-color: #dc3545; padding: 5px 10px;">X</button></td>
             `;
             tbody.appendChild(tr);
@@ -242,7 +275,7 @@
             let validData = [];
             for (let i = 0; i < times.length; i++) {
                 let roomNum = parseInt(rooms[i].value);
-                // Filtrar solo las salas que cumplen con el número mínimo y no están vacías
+                // Filtra solo las salas que cumplen con el número mínimo elegido en los controles
                 if (times[i].value.trim() !== "" && !isNaN(roomNum) && roomNum >= minRoom) {
                     validData.push([times[i].value, roomNum]);
                 }
@@ -261,6 +294,7 @@
             const dataCol1 = validData.slice(0, half);
             const dataCol2 = validData.slice(half);
 
+            // Configuraciones de estilo idénticas a tu foto 3
             const tableStyles = {
                 theme: 'grid',
                 head: [], 
@@ -313,11 +347,14 @@
                 }
             }
 
+            // Dibuja las dos copias idénticas en la hoja Horizontal
             drawBlock(15); 
             drawBlock(155);
 
-            doc.save("horarios_salidas_final.pdf");
+            doc.save("horarios_salidas_excel.pdf");
         }
     </script>
+</body>
+</html>
 </body>
 </html>
