@@ -1,0 +1,258 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Generador de Cierres de Salas</title>
+    
+    <!-- Librerías para OCR y PDF -->
+    <script src="https://cdn.jsdelivr.net/npm/tesseract.js@4/dist/tesseract.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.28/jspdf.plugin.autotable.min.js"></script>
+
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #f4f7f6;
+            color: #333;
+            max-width: 900px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        .card {
+            background: #fff;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            margin-bottom: 20px;
+        }
+        h1, h2 { color: #0056b3; }
+        input[type="file"], .title-input {
+            display: block;
+            margin-bottom: 15px;
+            width: 100%;
+            max-width: 300px;
+            padding: 8px;
+        }
+        button {
+            background-color: #0056b3;
+            color: white;
+            border: none;
+            padding: 10px 15px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 16px;
+        }
+        button:hover { background-color: #004494; }
+        button:disabled { background-color: #ccc; cursor: not-allowed; }
+        #status { margin-top: 10px; font-weight: bold; color: #d9534f; }
+        
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 15px;
+        }
+        th, td {
+            border: 1px solid #ddd;
+            padding: 10px;
+            text-align: center;
+        }
+        th { background-color: #f8f9fa; }
+        input.edit-input {
+            width: 100%;
+            border: none;
+            background: transparent;
+            font-size: 15px;
+            text-align: center;
+        }
+        .controls {
+            display: flex;
+            gap: 10px;
+            margin-top: 15px;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="card">
+        <h1>Generador de Horarios de Cierre</h1>
+        <p>1. Sube la captura de pantalla de las funciones.</p>
+        <input type="file" id="imageInput" accept="image/*">
+        <button id="processBtn" onclick="processImage()">Extraer Horarios</button>
+        <div id="status"></div>
+    </div>
+
+    <div class="card" id="editorSection" style="display: none;">
+        <h2>2. Verifica y Completa</h2>
+        <p>Añade el título del día (ej. "miércoles 3") y rellena el número de personas. El PDF final se dividirá en dos columnas grandes automáticamente.</p>
+        
+        <input type="text" id="dayTitle" class="title-input" placeholder="Ej. miércoles 3">
+
+        <table id="dataTable">
+            <thead>
+                <tr>
+                    <th>Hora de Cierre</th>
+                    <th>Personas (Opcional)</th>
+                    <th>Sala</th>
+                    <th>Acción</th>
+                </tr>
+            </thead>
+            <tbody id="tableBody">
+                <!-- Filas generadas dinámicamente -->
+            </tbody>
+        </table>
+        
+        <div class="controls">
+            <button onclick="addRow('', '', '')">+ Agregar Fila</button>
+            <button onclick="generatePDF()" style="background-color: #28a745;">Imprimir Hoja Carta (Diseño de 2 Columnas)</button>
+        </div>
+    </div>
+
+    <script>
+        async function processImage() {
+            const input = document.getElementById('imageInput');
+            const statusDiv = document.getElementById('status');
+            const processBtn = document.getElementById('processBtn');
+
+            if (!input.files || input.files.length === 0) {
+                alert("Por favor selecciona una imagen primero.");
+                return;
+            }
+
+            const file = input.files[0];
+            statusDiv.innerText = "Analizando imagen... esto puede tomar unos segundos.";
+            processBtn.disabled = true;
+
+            try {
+                const { data: { text } } = await Tesseract.recognize(file, 'spa');
+                
+                const timeRegex = /([0-1]?[0-9]|2[0-3]):[0-5][0-9]/g;
+                let foundTimes = text.match(timeRegex) || [];
+                
+                document.getElementById('tableBody').innerHTML = '';
+                
+                if(foundTimes.length === 0) {
+                    statusDiv.innerText = "No se detectaron horas claras. Por favor ingresa los datos manualmente.";
+                    addRow("3:39 PM", "", "5");
+                } else {
+                    statusDiv.innerText = "Análisis completado. Verifica los datos y agrega el número de personas.";
+                    foundTimes.forEach((time, index) => {
+                        addRow(formatAMPM(time), "", (index + 1).toString()); 
+                    });
+                }
+
+                document.getElementById('editorSection').style.display = 'block';
+
+            } catch (error) {
+                console.error(error);
+                statusDiv.innerText = "Hubo un error al procesar la imagen.";
+            } finally {
+                processBtn.disabled = false;
+            }
+        }
+
+        function formatAMPM(time24) {
+            let [hours, minutes] = time24.split(':');
+            hours = parseInt(hours, 10);
+            const ampm = hours >= 12 ? 'PM' : 'AM';
+            hours = hours % 12;
+            hours = hours ? hours : 12; 
+            return `${hours}:${minutes} ${ampm}`;
+        }
+
+        function addRow(time, people, room) {
+            const tbody = document.getElementById('tableBody');
+            const tr = document.createElement('tr');
+            
+            tr.innerHTML = `
+                <td><input type="text" class="edit-input time-input" value="${time}" placeholder="Ej. 10:00 PM"></td>
+                <td><input type="text" class="edit-input people-input" value="${people}" placeholder="Ej. 15"></td>
+                <td><input type="text" class="edit-input room-input" value="${room}" placeholder="Ej. 14"></td>
+                <td><button onclick="this.parentElement.parentElement.remove()" style="background-color: #dc3545; padding: 5px 10px;">X</button></td>
+            `;
+            tbody.appendChild(tr);
+        }
+
+        function generatePDF() {
+            const { jsPDF } = window.jspdf;
+            const doc = new jsPDF({ orientation: 'p', unit: 'mm', format: 'letter' });
+
+            const title = document.getElementById('dayTitle').value || '';
+            const times = document.querySelectorAll('.time-input');
+            const peoples = document.querySelectorAll('.people-input');
+            const rooms = document.querySelectorAll('.room-input');
+            
+            let allData = [];
+            for (let i = 0; i < times.length; i++) {
+                if (times[i].value.trim() !== "" || rooms[i].value.trim() !== "") {
+                    allData.push([times[i].value, peoples[i].value, rooms[i].value]);
+                }
+            }
+
+            // Título superior con el icono del corazón simulando el original
+            doc.setFontSize(14);
+            doc.setFont("helvetica", "normal");
+            if(title) {
+                doc.text("♡   " + title, 105, 20, { align: "center" });
+            }
+
+            // Dividir los datos en dos mitades para las dos columnas
+            const half = Math.ceil(allData.length / 2);
+            const leftData = allData.slice(0, half);
+            const rightData = allData.slice(half);
+
+            // Estilos globales de la tabla para que coincidan con la foto
+            const tableStyles = {
+                theme: 'grid',
+                head: [], // Sin encabezado impreso
+                styles: {
+                    font: 'helvetica',
+                    fontSize: 12,
+                    textColor: [0, 0, 0],
+                    lineColor: [0, 0, 0],
+                    lineWidth: 0.3, // Líneas internas delgadas
+                    valign: 'middle',
+                    cellPadding: { top: 3, right: 3, bottom: 3, left: 3 }
+                },
+                columnStyles: {
+                    0: { halign: 'center', cellWidth: 35 }, // Hora
+                    1: { halign: 'center', cellWidth: 25 }, // Personas
+                    2: { halign: 'right', cellWidth: 20 }   // Sala
+                }
+            };
+
+            // RENDERIZAR COLUMNA IZQUIERDA
+            if (leftData.length > 0) {
+                doc.autoTable({
+                    ...tableStyles,
+                    body: leftData,
+                    startY: 30,
+                    margin: { left: 25, right: 111 } // Fuerza a que dibuje en el lado izquierdo
+                });
+                
+                // Dibujar contorno exterior grueso para la tabla izquierda
+                const leftTableHeight = doc.lastAutoTable.finalY - 30;
+                doc.setLineWidth(1.2); 
+                doc.rect(25, 30, 80, leftTableHeight); 
+            }
+
+            // RENDERIZAR COLUMNA DERECHA
+            if (rightData.length > 0) {
+                doc.autoTable({
+                    ...tableStyles,
+                    body: rightData,
+                    startY: 30,
+                    margin: { left: 111, right: 25 } // Fuerza a que dibuje en el lado derecho
+                });
+
+                // Dibujar contorno exterior grueso para la tabla derecha
+                const rightTableHeight = doc.lastAutoTable.finalY - 30;
+                doc.setLineWidth(1.2);
+                doc.rect(111, 30, 80, rightTableHeight);
+            }
+
+            doc.save("horarios_cierre_2_columnas.pdf");
+        }
+    </script>
+</body>
+</html>
