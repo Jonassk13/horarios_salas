@@ -187,7 +187,7 @@
                             let timeObj = modifyTime(timeVal, offsetMinutes);
                             
                             if (timeObj) {
-                                // Aplicar el filtro de hora (Las madrugadas siempre pasan porque valen +1440 mins)
+                                // Aplicar el filtro de hora
                                 if (timeObj.sortValue >= minStartMinutes) {
                                     processedData.push({
                                         displayTime: timeObj.display,
@@ -263,7 +263,8 @@
             for (let i = 0; i < times.length; i++) {
                 let roomNum = parseInt(rooms[i].value);
                 if (times[i].value.trim() !== "" && !isNaN(roomNum) && roomNum >= minRoom) {
-                    validData.push([times[i].value, roomNum]);
+                    // CORRECCIÓN APLICADA AQUÍ: Se guarda como objeto para que el dibujado lo pueda leer
+                    validData.push({ displayTime: times[i].value, room: roomNum });
                 }
             }
 
@@ -273,30 +274,25 @@
             }
 
             const { jsPDF } = window.jspdf;
-            // Hoja tamaño Carta en formato Horizontal (Landscape)
             const doc = new jsPDF({ orientation: 'l', unit: 'mm', format: 'letter' });
             const title = document.getElementById('dayTitle').value || 'MARTES :)';
             
-            // Medidas de dibujo exactas
             const col1W = 28;
             const col2W = 14;
-            const subW = col1W + col2W; // 42mm por sub-columna
-            const gap = 3; // 3mm de espacio entre sub-columnas
-            const totalW = subW + gap + subW; // 87mm de ancho total por bloque
+            const subW = col1W + col2W;
+            const gap = 3; 
+            const totalW = subW + gap + subW; 
 
             function drawBlock(startX, blockData) {
-                // Aseguramos un mínimo de 34 filas para que el cuadro llegue hasta abajo (como la foto)
                 let maxRows = Math.max(34, Math.ceil(blockData.length / 2));
                 
-                // Sistema Anti-Desbordamiento: Si hay demasiados datos, encogemos las filas
                 let rowHeight = 5.5; 
                 let fontSize = 10;
                 if (maxRows > 34) {
-                    rowHeight = 185 / maxRows; // 185mm es el espacio máximo seguro vertical
-                    if(rowHeight < 4.5) fontSize = 8; // Achicamos letra si las filas son muy delgadas
+                    rowHeight = 185 / maxRows; 
+                    if(rowHeight < 4.5) fontSize = 8; 
                 }
 
-                // Dividir el día completo en dos sub-columnas para este bloque
                 const subCol1 = [];
                 const subCol2 = [];
                 for(let i=0; i < maxRows; i++) {
@@ -306,68 +302,57 @@
 
                 const currentY = 12;
 
-                // 1. Dibujar el Trapecio (Encabezado)
                 doc.setLineWidth(0.4);
-                doc.line(startX + 8, currentY, startX + totalW - 8, currentY); // Línea Arriba
-                doc.line(startX, currentY + 6, startX + totalW, currentY + 6); // Línea Abajo
-                doc.line(startX + 8, currentY, startX, currentY + 6); // Diagonal Izquierda
-                doc.line(startX + totalW - 8, currentY, startX + totalW, currentY + 6); // Diagonal Derecha
+                doc.line(startX + 8, currentY, startX + totalW - 8, currentY); 
+                doc.line(startX, currentY + 6, startX + totalW, currentY + 6); 
+                doc.line(startX + 8, currentY, startX, currentY + 6); 
+                doc.line(startX + totalW - 8, currentY, startX + totalW, currentY + 6); 
 
                 doc.setFont("helvetica", "normal");
                 doc.setFontSize(10);
                 doc.text(`<3       ${title}`, startX + (totalW / 2), currentY + 4.2, { align: "center" });
 
-                const startY = currentY + 8; // Inicio de las tablas
+                const startY = currentY + 8; 
 
-                // 2. Función para dibujar cada sub-columna
                 function drawSubCol(x, items) {
-                    doc.setLineWidth(0.2); // Líneas delgadas para la cuadrícula interna
+                    doc.setLineWidth(0.2); 
                     
                     for (let i = 0; i < items.length; i++) {
                         let y = startY + (i * rowHeight);
-                        // Celdas
                         doc.rect(x, y, col1W, rowHeight);
                         doc.rect(x + col1W, y, col2W, rowHeight);
 
-                        // Textos
                         if (items[i].displayTime !== '') {
                             doc.setFont("helvetica", "normal");
                             doc.setFontSize(fontSize);
-                            // Ajuste matemático para centrar el texto verticalmente
                             doc.text(items[i].displayTime, x + 2, y + (rowHeight * 0.75));
                             doc.setFont("helvetica", "bold");
                             doc.text(items[i].room.toString(), x + col1W + (col2W / 2), y + (rowHeight * 0.75), { align: "center" });
                         }
                     }
 
-                    // 3. Dibujar Borde Exterior Grueso y el "Doblez"
                     const h = items.length * rowHeight;
-                    const corner = 3.5; // Tamaño de la esquina doblada
+                    const corner = 3.5; 
 
-                    doc.setLineWidth(0.8); // Borde Grueso
-                    doc.line(x, startY, x + subW, startY); // Arriba
-                    doc.line(x, startY, x, startY + h); // Izquierda
-                    doc.line(x, startY + h, x + subW - corner, startY + h); // Abajo (cortada)
-                    doc.line(x + subW, startY, x + subW, startY + h - corner); // Derecha (cortada)
+                    doc.setLineWidth(0.8); 
+                    doc.line(x, startY, x + subW, startY); 
+                    doc.line(x, startY, x, startY + h); 
+                    doc.line(x, startY + h, x + subW - corner, startY + h); 
+                    doc.line(x + subW, startY, x + subW, startY + h - corner); 
 
-                    // Línea gruesa diagonal del doblez
                     doc.line(x + subW - corner, startY + h, x + subW, startY + h - corner);
 
-                    // Líneas delgadas internas del doblez
                     doc.setLineWidth(0.2);
                     doc.line(x + subW - corner, startY + h, x + subW - corner, startY + h - corner);
                     doc.line(x + subW - corner, startY + h - corner, x + subW, startY + h - corner);
                 }
 
-                // Dibujar Sub-Columna Izquierda y Derecha de este bloque
                 drawSubCol(startX, subCol1);
                 drawSubCol(startX + subW + gap, subCol2);
             }
 
-            // MÁGIA FINAL: Dibujamos dos bloques idénticos (cada uno con la info de todo el día)
-            // Coordenadas calculadas para centrar perfectamente ambas mitades en tamaño Carta
-            drawBlock(26, validData);  // Mitad Izquierda
-            drawBlock(166, validData); // Mitad Derecha
+            drawBlock(26, validData);  
+            drawBlock(166, validData); 
 
             doc.save("horarios_exactos_final.pdf");
         }
