@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Generador de Cierres de Salas (Versión Exacta)</title>
+    <title>Generador de Cierres de Salas (Diseño Exacto)</title>
     
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
@@ -126,6 +126,7 @@
 
     <div class="card" id="editorSection" style="display: none;">
         <h2>2. Vista Previa</h2>
+        <p style="font-size: 13px; color: #666;">El PDF final imprimirá dos copias idénticas en la misma hoja (cada una con el día completo dividido en dos columnas exactas).</p>
         
         <table id="dataTable">
             <thead>
@@ -148,7 +149,7 @@
             const input = document.getElementById('excelInput');
             const timeField = document.getElementById('timeField').value;
             const offsetMinutes = parseInt(document.getElementById('timeOffset').value) || 0;
-            const startTimeStr = document.getElementById('startTimeFilter').value; // Ej: "15:30"
+            const startTimeStr = document.getElementById('startTimeFilter').value; 
             const statusDiv = document.getElementById('status');
 
             if (!input.files || input.files.length === 0) {
@@ -156,7 +157,6 @@
                 return;
             }
 
-            // Convertir la hora de inicio a minutos para el filtro
             let minStartMinutes = 0;
             if (startTimeStr) {
                 let parts = startTimeStr.split(':');
@@ -187,8 +187,7 @@
                             let timeObj = modifyTime(timeVal, offsetMinutes);
                             
                             if (timeObj) {
-                                // Aplicar el filtro de hora (si sortValue es mayor o igual a minStartMinutes)
-                                // Nota: Las horas de madrugada (0-3 AM) tienen sortValue > 1440, por lo que siempre pasarán el filtro de 15:30.
+                                // Aplicar el filtro de hora (Las madrugadas siempre pasan porque valen +1440 mins)
                                 if (timeObj.sortValue >= minStartMinutes) {
                                     processedData.push({
                                         displayTime: timeObj.display,
@@ -274,79 +273,103 @@
             }
 
             const { jsPDF } = window.jspdf;
+            // Hoja tamaño Carta en formato Horizontal (Landscape)
             const doc = new jsPDF({ orientation: 'l', unit: 'mm', format: 'letter' });
             const title = document.getElementById('dayTitle').value || 'MARTES :)';
             
-            const half = Math.ceil(validData.length / 2);
-            const dataCol1 = validData.slice(0, half);
-            const dataCol2 = validData.slice(half);
+            // Medidas de dibujo exactas
+            const col1W = 28;
+            const col2W = 14;
+            const subW = col1W + col2W; // 42mm por sub-columna
+            const gap = 3; // 3mm de espacio entre sub-columnas
+            const totalW = subW + gap + subW; // 87mm de ancho total por bloque
 
-            // Configuraciones de Dibujo Manual (Sin usar AutoTable)
-            const col1Width = 35;
-            const col2Width = 15;
-            const rowHeight = 7; 
-            const totalWidth = col1Width + col2Width;
+            function drawBlock(startX, blockData) {
+                // Aseguramos un mínimo de 34 filas para que el cuadro llegue hasta abajo (como la foto)
+                let maxRows = Math.max(34, Math.ceil(blockData.length / 2));
+                
+                // Sistema Anti-Desbordamiento: Si hay demasiados datos, encogemos las filas
+                let rowHeight = 5.5; 
+                let fontSize = 10;
+                if (maxRows > 34) {
+                    rowHeight = 185 / maxRows; // 185mm es el espacio máximo seguro vertical
+                    if(rowHeight < 4.5) fontSize = 8; // Achicamos letra si las filas son muy delgadas
+                }
 
-            function drawBlock(startX, dataCol) {
-                let currentY = 15;
+                // Dividir el día completo en dos sub-columnas para este bloque
+                const subCol1 = [];
+                const subCol2 = [];
+                for(let i=0; i < maxRows; i++) {
+                    subCol1.push(blockData[i] || {displayTime: '', room: ''});
+                    subCol2.push(blockData[i + maxRows] || {displayTime: '', room: ''});
+                }
 
-                // 1. Dibujar el Trapecio del Encabezado (Idéntico a la imagen)
-                doc.setLineWidth(0.5);
-                doc.line(startX + 4, currentY, startX + totalWidth - 4, currentY); // Línea superior
-                doc.line(startX + 4, currentY, startX, currentY + 6); // Diagonal Izquierda
-                doc.line(startX + totalWidth - 4, currentY, startX + totalWidth, currentY + 6); // Diagonal Derecha
-                doc.line(startX, currentY + 6, startX + totalWidth, currentY + 6); // Línea inferior
+                const currentY = 12;
+
+                // 1. Dibujar el Trapecio (Encabezado)
+                doc.setLineWidth(0.4);
+                doc.line(startX + 8, currentY, startX + totalW - 8, currentY); // Línea Arriba
+                doc.line(startX, currentY + 6, startX + totalW, currentY + 6); // Línea Abajo
+                doc.line(startX + 8, currentY, startX, currentY + 6); // Diagonal Izquierda
+                doc.line(startX + totalW - 8, currentY, startX + totalW, currentY + 6); // Diagonal Derecha
 
                 doc.setFont("helvetica", "normal");
                 doc.setFontSize(10);
-                doc.text(title, startX + (totalWidth / 2), currentY + 4, { align: "center" });
+                doc.text(`<3       ${title}`, startX + (totalW / 2), currentY + 4.2, { align: "center" });
 
-                // 2. Dibujar las filas
-                currentY += 12; // Espacio entre encabezado y tabla
-                const tableStartY = currentY;
+                const startY = currentY + 8; // Inicio de las tablas
 
-                doc.setLineWidth(0.3); // Grosor de las líneas internas
+                // 2. Función para dibujar cada sub-columna
+                function drawSubCol(x, items) {
+                    doc.setLineWidth(0.2); // Líneas delgadas para la cuadrícula interna
+                    
+                    for (let i = 0; i < items.length; i++) {
+                        let y = startY + (i * rowHeight);
+                        // Celdas
+                        doc.rect(x, y, col1W, rowHeight);
+                        doc.rect(x + col1W, y, col2W, rowHeight);
 
-                for (let i = 0; i < dataCol.length; i++) {
-                    let y = currentY + (i * rowHeight);
-                    
-                    // Celdas internas
-                    doc.rect(startX, y, col1Width, rowHeight); // Celda Hora
-                    doc.rect(startX + col1Width, y, col2Width, rowHeight); // Celda Sala
-                    
-                    // Textos
-                    doc.setFont("helvetica", "normal");
-                    doc.text(dataCol[i][0], startX + 3, y + 5); // Escribir Hora
-                    
-                    doc.setFont("helvetica", "bold");
-                    doc.text(dataCol[i][1].toString(), startX + col1Width + (col2Width / 2), y + 5, { align: "center" }); // Escribir Sala
+                        // Textos
+                        if (items[i].displayTime !== '') {
+                            doc.setFont("helvetica", "normal");
+                            doc.setFontSize(fontSize);
+                            // Ajuste matemático para centrar el texto verticalmente
+                            doc.text(items[i].displayTime, x + 2, y + (rowHeight * 0.75));
+                            doc.setFont("helvetica", "bold");
+                            doc.text(items[i].room.toString(), x + col1W + (col2W / 2), y + (rowHeight * 0.75), { align: "center" });
+                        }
+                    }
+
+                    // 3. Dibujar Borde Exterior Grueso y el "Doblez"
+                    const h = items.length * rowHeight;
+                    const corner = 3.5; // Tamaño de la esquina doblada
+
+                    doc.setLineWidth(0.8); // Borde Grueso
+                    doc.line(x, startY, x + subW, startY); // Arriba
+                    doc.line(x, startY, x, startY + h); // Izquierda
+                    doc.line(x, startY + h, x + subW - corner, startY + h); // Abajo (cortada)
+                    doc.line(x + subW, startY, x + subW, startY + h - corner); // Derecha (cortada)
+
+                    // Línea gruesa diagonal del doblez
+                    doc.line(x + subW - corner, startY + h, x + subW, startY + h - corner);
+
+                    // Líneas delgadas internas del doblez
+                    doc.setLineWidth(0.2);
+                    doc.line(x + subW - corner, startY + h, x + subW - corner, startY + h - corner);
+                    doc.line(x + subW - corner, startY + h - corner, x + subW, startY + h - corner);
                 }
 
-                // 3. Dibujar Borde Exterior Grueso
-                const tableHeight = dataCol.length * rowHeight;
-                doc.setLineWidth(1.0); // Borde grueso
-                doc.rect(startX, tableStartY, totalWidth, tableHeight);
-
-                // Dibujar el detalle del doblez en la esquina inferior derecha
-                const corner = 4;
-                doc.setDrawColor(255, 255, 255); // Usar blanco para borrar la esquina
-                doc.line(startX + totalWidth - corner, tableStartY + tableHeight, startX + totalWidth, tableStartY + tableHeight);
-                doc.line(startX + totalWidth, tableStartY + tableHeight - corner, startX + totalWidth, tableStartY + tableHeight);
-                
-                doc.setDrawColor(0, 0, 0); // Regresar a negro
-                doc.setLineWidth(1.0);
-                doc.line(startX + totalWidth - corner, tableStartY + tableHeight, startX + totalWidth, tableStartY + tableHeight - corner); // Corte en diagonal
-
-                doc.setLineWidth(0.3);
-                doc.line(startX + totalWidth - corner, tableStartY + tableHeight, startX + totalWidth - corner, tableStartY + tableHeight - corner);
-                doc.line(startX + totalWidth - corner, tableStartY + tableHeight - corner, startX + totalWidth, tableStartY + tableHeight - corner);
+                // Dibujar Sub-Columna Izquierda y Derecha de este bloque
+                drawSubCol(startX, subCol1);
+                drawSubCol(startX + subW + gap, subCol2);
             }
 
-            // Dibuja las dos copias idénticas
-            drawBlock(25, dataCol1); 
-            drawBlock(145, dataCol2);
+            // MÁGIA FINAL: Dibujamos dos bloques idénticos (cada uno con la info de todo el día)
+            // Coordenadas calculadas para centrar perfectamente ambas mitades en tamaño Carta
+            drawBlock(26, validData);  // Mitad Izquierda
+            drawBlock(166, validData); // Mitad Derecha
 
-            doc.save("horarios_exactos.pdf");
+            doc.save("horarios_exactos_final.pdf");
         }
     </script>
 </body>
