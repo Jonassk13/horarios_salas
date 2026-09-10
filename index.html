@@ -64,6 +64,14 @@
         .btn-print { background-color: #28a745; width: 100%; margin-top: 10px;}
         .btn-print:hover { background-color: #218838; }
         #status { margin-top: 10px; font-weight: bold; color: #d9534f; }
+        .validation-box {
+            background-color: #e2e3e5;
+            padding: 12px;
+            border-radius: 6px;
+            margin-bottom: 15px;
+            font-size: 14px;
+            border-left: 5px solid #0056b3;
+        }
         
         table {
             width: 100%;
@@ -125,7 +133,15 @@
     </div>
 
     <div class="card" id="editorSection" style="display: none;">
-        <h2>2. Vista Previa</h2>
+        <h2>2. Vista Previa y Validación</h2>
+        
+        <!-- Caja de validación para garantizar que no falten salas -->
+        <div class="validation-box">
+            <strong>✓ Validación del Archivo:</strong><br>
+            <span id="detectedRoomsText" style="color: #333;"></span><br>
+            <span id="filteredRoomsText" style="color: #28a745; font-weight: bold;"></span>
+        </div>
+
         <p style="font-size: 13px; color: #666;">El PDF final imprimirá dos copias idénticas en la misma hoja (cada una con el día completo dividido en dos columnas exactas).</p>
         
         <table id="dataTable">
@@ -150,6 +166,7 @@
             const timeField = document.getElementById('timeField').value;
             const offsetMinutes = parseInt(document.getElementById('timeOffset').value) || 0;
             const startTimeStr = document.getElementById('startTimeFilter').value; 
+            const minRoom = parseInt(document.getElementById('minRoom').value) || 1;
             const statusDiv = document.getElementById('status');
 
             if (!input.files || input.files.length === 0) {
@@ -163,7 +180,7 @@
                 minStartMinutes = parseInt(parts[0]) * 60 + parseInt(parts[1]);
             }
 
-            statusDiv.innerText = "Procesando...";
+            statusDiv.innerText = "Procesando y validando salas...";
             const file = input.files[0];
             const reader = new FileReader();
 
@@ -176,25 +193,33 @@
                     const json = XLSX.utils.sheet_to_json(worksheet);
                     
                     let processedData = [];
+                    let allRoomsInFile = new Set();
+                    let finalRoomsToPrint = new Set();
 
                     json.forEach(row => {
                         let auditorium = row['AUDITORIUM'];
                         let timeVal = row[timeField];
 
                         if (auditorium && timeVal !== undefined && timeVal !== null) {
+                            // Extraer el número de la sala limpiamente
                             let roomMatch = String(auditorium).match(/\d+/);
-                            let roomNum = roomMatch ? roomMatch[0] : auditorium;
+                            let roomNum = roomMatch ? parseInt(roomMatch[0]) : null;
                             
-                            // Nuevo motor de conversión de tiempo a prueba de fallos
-                            let timeObj = modifyTime(timeVal, offsetMinutes);
-                            
-                            if (timeObj) {
-                                if (timeObj.sortValue >= minStartMinutes) {
-                                    processedData.push({
-                                        displayTime: timeObj.display,
-                                        sortValue: timeObj.sortValue,
-                                        room: roomNum
-                                    });
+                            if (roomNum !== null) {
+                                allRoomsInFile.add(roomNum); // Registrar sala encontrada en el Excel original
+
+                                let timeObj = modifyTime(timeVal, offsetMinutes);
+                                
+                                if (timeObj) {
+                                    // Validar los filtros de hora y número de sala mínimo
+                                    if (timeObj.sortValue >= minStartMinutes && roomNum >= minRoom) {
+                                        finalRoomsToPrint.add(roomNum);
+                                        processedData.push({
+                                            displayTime: timeObj.display,
+                                            sortValue: timeObj.sortValue,
+                                            room: roomNum
+                                        });
+                                    }
                                 }
                             }
                         }
@@ -205,13 +230,21 @@
                         return;
                     }
 
+                    // Mostrar resumen de validación
+                    let roomsArray = Array.from(allRoomsInFile).sort((a, b) => a - b);
+                    let printedArray = Array.from(finalRoomsToPrint).sort((a, b) => a - b);
+                    
+                    document.getElementById('detectedRoomsText').innerText = `Salas detectadas en el Excel: ${roomsArray.join(', ')} (Total: ${roomsArray.length})`;
+                    document.getElementById('filteredRoomsText').innerText = `Salas a imprimir tras aplicar filtros: ${printedArray.join(', ')} (Total: ${printedArray.length})`;
+
+                    // Ordenar por hora y llenar tabla
                     processedData.sort((a, b) => a.sortValue - b.sortValue);
                     document.getElementById('tableBody').innerHTML = '';
                     processedData.forEach(d => {
                         addRow(d.displayTime, d.room);
                     });
 
-                    statusDiv.innerText = "¡Datos extraídos y filtrados con éxito!";
+                    statusDiv.innerText = "¡Datos extraídos con éxito!";
                     document.getElementById('editorSection').style.display = 'block';
 
                 } catch (error) {
@@ -222,55 +255,47 @@
             reader.readAsArrayBuffer(file);
         }
 
-        // MOTOR DE TIEMPO MEJORADO: Detecta formatos ISO, 24h strings y decimales de Excel
+        // MOTOR DE TIEMPO: Detecta formatos HH:MM:SS, ISO, 24h strings y decimales de Excel
         function modifyTime(timeVal, offsetMinutes) {
             let hours = 0;
             let minutes = 0;
 
-            // 1. Es un objeto Date (El comportamiento nativo de SheetJS)
             if (timeVal instanceof Date && !isNaN(timeVal.getTime())) {
                 hours = timeVal.getHours();
                 minutes = timeVal.getMinutes();
             } 
-            // 2. Es un String de 24 horas (Ej: "14:30" o "22:45:00")
             else if (typeof timeVal === 'string' && timeVal.match(/^\d{1,2}:\d{2}/)) {
                 let parts = timeVal.split(':');
                 hours = parseInt(parts[0], 10);
                 minutes = parseInt(parts[1], 10);
             } 
-            // 3. Es un formato decimal (Excel guarda las horas como fracciones de 1 día, ej: 0.5 = 12:00 PM)
             else if (typeof timeVal === 'number') {
                 let totalSeconds = Math.round(timeVal * 24 * 3600);
                 hours = Math.floor(totalSeconds / 3600) % 24;
                 minutes = Math.floor((totalSeconds % 3600) / 60);
             } 
-            // 4. Último intento, parseo clásico de texto a fecha
             else {
                 let date = new Date(timeVal);
                 if (!isNaN(date.getTime())) {
                     hours = date.getHours();
                     minutes = date.getMinutes();
                 } else {
-                    return null; // Imposible leer esta celda
+                    return null; 
                 }
             }
 
-            // Aplicar minutos extra o restar tiempo
             let totalMinutes = (hours * 60) + minutes + offsetMinutes;
             
-            // Recalcular horas y minutos después del ajuste (por si cruza la medianoche)
             hours = Math.floor(totalMinutes / 60) % 24;
-            if (hours < 0) hours += 24; // Manejo de tiempo negativo hacia el día anterior
+            if (hours < 0) hours += 24; 
             minutes = ((totalMinutes % 60) + 60) % 60;
 
-            // Generar un número de orden (las madrugadas de 0-3 am se mandan al final del día sumando +24h)
             let sortValue = (hours >= 0 && hours <= 3) ? hours + 24 : hours;
             sortValue = sortValue * 60 + minutes;
 
-            // Conversión al formato clásico de 12h AM/PM
             const ampm = hours >= 12 ? 'PM' : 'AM';
             let formattedHours = hours % 12;
-            formattedHours = formattedHours ? formattedHours : 12; // Si es 0, que sea 12
+            formattedHours = formattedHours ? formattedHours : 12; 
             let formattedMinutes = minutes < 10 ? '0' + minutes : minutes;
             
             return {
