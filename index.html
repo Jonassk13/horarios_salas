@@ -115,8 +115,8 @@
                 </select>
             </div>
             <div class="control-item">
-                <label>Filtrar desde la hora (24h):</label>
-                <input type="time" id="startTimeFilter" value="15:30">
+                <label>Filtrar desde la hora (Opcional):</label>
+                <input type="time" id="startTimeFilter" value="">
             </div>
             <div class="control-item">
                 <label>Ajuste tiempo (Min)</label>
@@ -135,14 +135,13 @@
     <div class="card" id="editorSection" style="display: none;">
         <h2>2. Vista Previa y Validación</h2>
         
-        <!-- Caja de validación para garantizar que no falten salas -->
         <div class="validation-box">
             <strong>✓ Validación del Archivo:</strong><br>
             <span id="detectedRoomsText" style="color: #333;"></span><br>
             <span id="filteredRoomsText" style="color: #28a745; font-weight: bold;"></span>
         </div>
 
-        <p style="font-size: 13px; color: #666;">El PDF final imprimirá dos copias idénticas en la misma hoja (cada una con el día completo dividido en dos columnas exactas).</p>
+        <p style="font-size: 13px; color: #666;">El PDF dividirá las funciones exactamente por la mitad para mantener la simetría.</p>
         
         <table id="dataTable">
             <thead>
@@ -201,17 +200,15 @@
                         let timeVal = row[timeField];
 
                         if (auditorium && timeVal !== undefined && timeVal !== null) {
-                            // Extraer el número de la sala limpiamente
                             let roomMatch = String(auditorium).match(/\d+/);
                             let roomNum = roomMatch ? parseInt(roomMatch[0]) : null;
                             
                             if (roomNum !== null) {
-                                allRoomsInFile.add(roomNum); // Registrar sala encontrada en el Excel original
+                                allRoomsInFile.add(roomNum); 
 
                                 let timeObj = modifyTime(timeVal, offsetMinutes);
                                 
                                 if (timeObj) {
-                                    // Validar los filtros de hora y número de sala mínimo
                                     if (timeObj.sortValue >= minStartMinutes && roomNum >= minRoom) {
                                         finalRoomsToPrint.add(roomNum);
                                         processedData.push({
@@ -226,18 +223,16 @@
                     });
 
                     if (processedData.length === 0) {
-                        statusDiv.innerText = `No se encontraron datos válidos después de las ${startTimeStr}. Revisa que la columna ${timeField} exista.`;
+                        statusDiv.innerText = `No se encontraron datos válidos. Revisa que la columna ${timeField} exista.`;
                         return;
                     }
 
-                    // Mostrar resumen de validación
                     let roomsArray = Array.from(allRoomsInFile).sort((a, b) => a - b);
                     let printedArray = Array.from(finalRoomsToPrint).sort((a, b) => a - b);
                     
-                    document.getElementById('detectedRoomsText').innerText = `Salas detectadas en el Excel: ${roomsArray.join(', ')} (Total: ${roomsArray.length})`;
-                    document.getElementById('filteredRoomsText').innerText = `Salas a imprimir tras aplicar filtros: ${printedArray.join(', ')} (Total: ${printedArray.length})`;
+                    document.getElementById('detectedRoomsText').innerText = `Salas detectadas en el Excel: ${roomsArray.join(', ')}`;
+                    document.getElementById('filteredRoomsText').innerText = `Funciones que se imprimirán: ${processedData.length}`;
 
-                    // Ordenar por hora y llenar tabla
                     processedData.sort((a, b) => a.sortValue - b.sortValue);
                     document.getElementById('tableBody').innerHTML = '';
                     processedData.forEach(d => {
@@ -255,7 +250,6 @@
             reader.readAsArrayBuffer(file);
         }
 
-        // MOTOR DE TIEMPO: Detecta formatos HH:MM:SS, ISO, 24h strings y decimales de Excel
         function modifyTime(timeVal, offsetMinutes) {
             let hours = 0;
             let minutes = 0;
@@ -344,12 +338,16 @@
             const totalW = subW + gap + subW; 
 
             function drawBlock(startX, blockData) {
-                let maxRows = Math.max(34, Math.ceil(blockData.length / 2));
+                // Cálculo simétrico exacto sin importar la longitud de los datos
+                let maxRows = Math.ceil(blockData.length / 2);
+                if (maxRows < 15) maxRows = 15; // Mínimo estético para que no se vea una tablita enana
                 
                 let rowHeight = 5.5; 
                 let fontSize = 10;
-                if (maxRows > 34) {
-                    rowHeight = 185 / maxRows; 
+                
+                // Si el día estuvo muy ocupado, encogemos las filas para que no se desborde del papel
+                if (maxRows > 32) {
+                    rowHeight = 180 / maxRows; 
                     if(rowHeight < 4.5) fontSize = 8; 
                 }
 
