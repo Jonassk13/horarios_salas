@@ -107,7 +107,7 @@
                 </select>
             </div>
             <div class="control-item">
-                <label>Filtrar desde la hora:</label>
+                <label>Filtrar desde la hora (24h):</label>
                 <input type="time" id="startTimeFilter" value="15:30">
             </div>
             <div class="control-item">
@@ -181,13 +181,14 @@
                         let auditorium = row['AUDITORIUM'];
                         let timeVal = row[timeField];
 
-                        if (auditorium && timeVal) {
+                        if (auditorium && timeVal !== undefined && timeVal !== null) {
                             let roomMatch = String(auditorium).match(/\d+/);
                             let roomNum = roomMatch ? roomMatch[0] : auditorium;
+                            
+                            // Nuevo motor de conversión de tiempo a prueba de fallos
                             let timeObj = modifyTime(timeVal, offsetMinutes);
                             
                             if (timeObj) {
-                                // Aplicar el filtro de hora
                                 if (timeObj.sortValue >= minStartMinutes) {
                                     processedData.push({
                                         displayTime: timeObj.display,
@@ -200,7 +201,7 @@
                     });
 
                     if (processedData.length === 0) {
-                        statusDiv.innerText = `No se encontraron datos después de las ${startTimeStr}.`;
+                        statusDiv.innerText = `No se encontraron datos válidos después de las ${startTimeStr}. Revisa que la columna ${timeField} exista.`;
                         return;
                     }
 
@@ -221,20 +222,55 @@
             reader.readAsArrayBuffer(file);
         }
 
+        // MOTOR DE TIEMPO MEJORADO: Detecta formatos ISO, 24h strings y decimales de Excel
         function modifyTime(timeVal, offsetMinutes) {
-            let date = (timeVal instanceof Date) ? timeVal : new Date(timeVal);
-            if (isNaN(date.getTime())) return null; 
-            
-            date.setMinutes(date.getMinutes() + offsetMinutes);
+            let hours = 0;
+            let minutes = 0;
 
-            let hours = date.getHours();
-            let minutes = date.getMinutes();
+            // 1. Es un objeto Date (El comportamiento nativo de SheetJS)
+            if (timeVal instanceof Date && !isNaN(timeVal.getTime())) {
+                hours = timeVal.getHours();
+                minutes = timeVal.getMinutes();
+            } 
+            // 2. Es un String de 24 horas (Ej: "14:30" o "22:45:00")
+            else if (typeof timeVal === 'string' && timeVal.match(/^\d{1,2}:\d{2}/)) {
+                let parts = timeVal.split(':');
+                hours = parseInt(parts[0], 10);
+                minutes = parseInt(parts[1], 10);
+            } 
+            // 3. Es un formato decimal (Excel guarda las horas como fracciones de 1 día, ej: 0.5 = 12:00 PM)
+            else if (typeof timeVal === 'number') {
+                let totalSeconds = Math.round(timeVal * 24 * 3600);
+                hours = Math.floor(totalSeconds / 3600) % 24;
+                minutes = Math.floor((totalSeconds % 3600) / 60);
+            } 
+            // 4. Último intento, parseo clásico de texto a fecha
+            else {
+                let date = new Date(timeVal);
+                if (!isNaN(date.getTime())) {
+                    hours = date.getHours();
+                    minutes = date.getMinutes();
+                } else {
+                    return null; // Imposible leer esta celda
+                }
+            }
+
+            // Aplicar minutos extra o restar tiempo
+            let totalMinutes = (hours * 60) + minutes + offsetMinutes;
+            
+            // Recalcular horas y minutos después del ajuste (por si cruza la medianoche)
+            hours = Math.floor(totalMinutes / 60) % 24;
+            if (hours < 0) hours += 24; // Manejo de tiempo negativo hacia el día anterior
+            minutes = ((totalMinutes % 60) + 60) % 60;
+
+            // Generar un número de orden (las madrugadas de 0-3 am se mandan al final del día sumando +24h)
             let sortValue = (hours >= 0 && hours <= 3) ? hours + 24 : hours;
             sortValue = sortValue * 60 + minutes;
 
+            // Conversión al formato clásico de 12h AM/PM
             const ampm = hours >= 12 ? 'PM' : 'AM';
             let formattedHours = hours % 12;
-            formattedHours = formattedHours ? formattedHours : 12; 
+            formattedHours = formattedHours ? formattedHours : 12; // Si es 0, que sea 12
             let formattedMinutes = minutes < 10 ? '0' + minutes : minutes;
             
             return {
@@ -263,7 +299,6 @@
             for (let i = 0; i < times.length; i++) {
                 let roomNum = parseInt(rooms[i].value);
                 if (times[i].value.trim() !== "" && !isNaN(roomNum) && roomNum >= minRoom) {
-                    // CORRECCIÓN APLICADA AQUÍ: Se guarda como objeto para que el dibujado lo pueda leer
                     validData.push({ displayTime: times[i].value, room: roomNum });
                 }
             }
