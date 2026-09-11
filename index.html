@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Generador de Cierres de Salas (Diseño Exacto)</title>
+    <title>Módulo de Cierres - Sistema de Inventario</title>
     
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
@@ -13,7 +13,7 @@
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
             background-color: #f4f7f6;
             color: #333;
-            max-width: 900px;
+            max-width: 950px;
             margin: 0 auto;
             padding: 20px;
         }
@@ -39,7 +39,7 @@
             display: flex;
             flex-direction: column;
             flex: 1;
-            min-width: 160px;
+            min-width: 170px;
         }
         label { font-weight: bold; margin-bottom: 5px; font-size: 13px; }
         input, select {
@@ -61,17 +61,14 @@
             transition: 0.2s;
         }
         button:hover { background-color: #004494; }
-        .btn-print { background-color: #28a745; width: 100%; margin-top: 10px;}
-        .btn-print:hover { background-color: #218838; }
+        .btn-success { background-color: #28a745; }
+        .btn-success:hover { background-color: #218838; }
+        .btn-warning { background-color: #ffc107; color: #000; }
+        .btn-warning:hover { background-color: #e0a800; }
+        .btn-danger { background-color: #dc3545; }
+        .btn-danger:hover { background-color: #c82333; }
+        
         #status { margin-top: 10px; font-weight: bold; color: #d9534f; }
-        .validation-box {
-            background-color: #e2e3e5;
-            padding: 12px;
-            border-radius: 6px;
-            margin-bottom: 15px;
-            font-size: 14px;
-            border-left: 5px solid #0056b3;
-        }
         
         table {
             width: 100%;
@@ -91,16 +88,37 @@
             font-size: 14px;
             text-align: center;
         }
+        .alt-box {
+            background: #eef2f5;
+            border: 1px solid #c8d4dd;
+            padding: 10px;
+            border-radius: 6px;
+            margin-top: 10px;
+        }
+        .db-list {
+            list-style: none;
+            padding: 0;
+        }
+        .db-item {
+            background: #f8f9fa;
+            border: 1px solid #ddd;
+            padding: 10px 15px;
+            margin-bottom: 8px;
+            border-radius: 5px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
     </style>
 </head>
 <body>
 
     <div class="card">
-        <h1>Generador de Horarios Exactos (Excel)</h1>
+        <h1>Operaciones: Cierres de Salas</h1>
         
         <div class="control-group">
             <div class="control-item" style="flex: 100%;">
-                <label>1. Carga el archivo de Excel</label>
+                <label>Cargar Archivo Excel del Sistema</label>
                 <input type="file" id="excelInput" accept=".xlsx, .xls">
             </div>
             <div class="control-item">
@@ -115,39 +133,61 @@
                 </select>
             </div>
             <div class="control-item">
-                <label>Filtrar desde la hora (Opcional):</label>
-                <input type="time" id="startTimeFilter" value="">
-            </div>
-            <div class="control-item">
                 <label>Ajuste tiempo (Min)</label>
                 <input type="number" id="timeOffset" value="0" placeholder="Ej. 10">
             </div>
             <div class="control-item">
-                <label>Desde Sala</label>
-                <input type="number" id="minRoom" value="1" min="1" max="16">
+                <label>Desde Sala Mínima</label>
+                <input type="number" id="minRoom" value="1" min="1" max="50">
             </div>
         </div>
 
-        <button onclick="processExcel()">Extraer Horarios</button>
+        <div class="alt-box">
+            <div style="display: flex; gap: 15px; flex-wrap: wrap;">
+                <div class="control-item">
+                    <label>¿Alternar Salas y Casetas (S/C)?</label>
+                    <select id="altMode" onchange="toggleAltSettings()">
+                        <option value="none">No alternar (Solo números)</option>
+                        <option value="chrono">Sí, Cronológicamente</option>
+                        <option value="numeric">Sí, Por número de Sala</option>
+                    </select>
+                </div>
+                <div class="control-item" id="altSettingsBox" style="display: none; flex-direction: row; gap: 10px;">
+                    <div>
+                        <label>A partir de la Sala:</label>
+                        <input type="number" id="altStartRoom" value="1" min="1" style="width: 80px;">
+                    </div>
+                    <div>
+                        <label>Esa sala será:</label>
+                        <select id="altStartRole">
+                            <option value="S">Sala (S)</option>
+                            <option value="C">Caseta (C)</option>
+                        </select>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <button onclick="processExcel()" style="margin-top: 15px;">Generar Horarios</button>
         <div id="status"></div>
     </div>
 
-    <div class="card" id="editorSection" style="display: none;">
-        <h2>2. Vista Previa y Validación</h2>
-        
-        <div class="validation-box">
-            <strong>✓ Validación del Archivo:</strong><br>
-            <span id="detectedRoomsText" style="color: #333;"></span><br>
-            <span id="filteredRoomsText" style="color: #28a745; font-weight: bold;"></span>
-        </div>
+    <!-- Módulo de Base de Datos / Historial -->
+    <div class="card">
+        <h2>Base de Datos de Horarios Guardados</h2>
+        <ul class="db-list" id="savedSchedulesList">
+            <li>No hay horarios guardados en el inventario.</li>
+        </ul>
+    </div>
 
-        <p style="font-size: 13px; color: #666;">El PDF dividirá las funciones exactamente por la mitad para mantener la simetría.</p>
+    <div class="card" id="editorSection" style="display: none;">
+        <h2 id="editorTitle">Vista Previa y Edición</h2>
         
         <table id="dataTable">
             <thead>
                 <tr>
-                    <th>Hora</th>
-                    <th>Sala</th>
+                    <th>Hora (Espacio para Nombre)</th>
+                    <th>Sala / Caseta</th>
                     <th>Acción</th>
                 </tr>
             </thead>
@@ -155,16 +195,28 @@
             </tbody>
         </table>
         
-        <button onclick="addRow('', '')" style="margin-top: 10px;">+ Agregar Fila Manual</button>
-        <button onclick="generatePDF()" class="btn-print">Imprimir Formato Doble (PDF)</button>
+        <div style="margin-top: 15px; display: flex; gap: 10px; flex-wrap: wrap;">
+            <button onclick="addRow('', '')">+ Agregar Fila Manual</button>
+            <button onclick="saveScheduleToDB()" class="btn-warning">Guardar en Base de Datos</button>
+            <button onclick="generatePDF()" class="btn-success">Imprimir Formato Doble (PDF)</button>
+        </div>
     </div>
 
     <script>
+        // Inicializar la base de datos al cargar la página
+        window.onload = function() {
+            renderSavedSchedules();
+        };
+
+        function toggleAltSettings() {
+            const mode = document.getElementById('altMode').value;
+            document.getElementById('altSettingsBox').style.display = (mode !== 'none') ? 'flex' : 'none';
+        }
+
         function processExcel() {
             const input = document.getElementById('excelInput');
             const timeField = document.getElementById('timeField').value;
             const offsetMinutes = parseInt(document.getElementById('timeOffset').value) || 0;
-            const startTimeStr = document.getElementById('startTimeFilter').value; 
             const minRoom = parseInt(document.getElementById('minRoom').value) || 1;
             const statusDiv = document.getElementById('status');
 
@@ -173,13 +225,7 @@
                 return;
             }
 
-            let minStartMinutes = 0;
-            if (startTimeStr) {
-                let parts = startTimeStr.split(':');
-                minStartMinutes = parseInt(parts[0]) * 60 + parseInt(parts[1]);
-            }
-
-            statusDiv.innerText = "Procesando y validando salas...";
+            statusDiv.innerText = "Procesando...";
             const file = input.files[0];
             const reader = new FileReader();
 
@@ -191,9 +237,7 @@
                     const worksheet = workbook.Sheets[sheetName];
                     const json = XLSX.utils.sheet_to_json(worksheet);
                     
-                    let processedData = [];
-                    let allRoomsInFile = new Set();
-                    let finalRoomsToPrint = new Set();
+                    let rawData = [];
 
                     json.forEach(row => {
                         let auditorium = row['AUDITORIUM'];
@@ -203,43 +247,67 @@
                             let roomMatch = String(auditorium).match(/\d+/);
                             let roomNum = roomMatch ? parseInt(roomMatch[0]) : null;
                             
-                            if (roomNum !== null) {
-                                allRoomsInFile.add(roomNum); 
-
+                            if (roomNum !== null && roomNum >= minRoom) {
                                 let timeObj = modifyTime(timeVal, offsetMinutes);
-                                
                                 if (timeObj) {
-                                    if (timeObj.sortValue >= minStartMinutes && roomNum >= minRoom) {
-                                        finalRoomsToPrint.add(roomNum);
-                                        processedData.push({
-                                            displayTime: timeObj.display,
-                                            sortValue: timeObj.sortValue,
-                                            room: roomNum
-                                        });
-                                    }
+                                    rawData.push({
+                                        displayTime: timeObj.display,
+                                        sortValue: timeObj.sortValue,
+                                        roomNum: roomNum
+                                    });
                                 }
                             }
                         }
                     });
 
-                    if (processedData.length === 0) {
-                        statusDiv.innerText = `No se encontraron datos válidos. Revisa que la columna ${timeField} exista.`;
+                    if (rawData.length === 0) {
+                        statusDiv.innerText = "No se encontraron datos válidos.";
                         return;
                     }
 
-                    let roomsArray = Array.from(allRoomsInFile).sort((a, b) => a - b);
-                    let printedArray = Array.from(finalRoomsToPrint).sort((a, b) => a - b);
-                    
-                    document.getElementById('detectedRoomsText').innerText = `Salas detectadas en el Excel: ${roomsArray.join(', ')}`;
-                    document.getElementById('filteredRoomsText').innerText = `Funciones que se imprimirán: ${processedData.length}`;
+                    rawData.sort((a, b) => a.sortValue - b.sortValue);
 
-                    processedData.sort((a, b) => a.sortValue - b.sortValue);
+                    // Alternancia S/C
+                    const altMode = document.getElementById('altMode').value;
+                    const altStartRoom = parseInt(document.getElementById('altStartRoom').value) || 1;
+                    const altStartRole = document.getElementById('altStartRole').value;
+
+                    if (altMode === 'numeric') {
+                        rawData.forEach(d => {
+                            if (d.roomNum >= altStartRoom) {
+                                let diff = d.roomNum - altStartRoom;
+                                let role = (diff % 2 === 0) ? altStartRole : (altStartRole === 'S' ? 'C' : 'S');
+                                d.displayRoom = `${role}-${d.roomNum}`;
+                            } else {
+                                d.displayRoom = d.roomNum.toString();
+                            }
+                        });
+                    } else if (altMode === 'chrono') {
+                        let toggle = (altStartRole === 'S'); 
+                        let alternatingStarted = false;
+
+                        rawData.forEach(d => {
+                            if (!alternatingStarted && d.roomNum === altStartRoom) {
+                                alternatingStarted = true;
+                            }
+                            if (alternatingStarted) {
+                                d.displayRoom = (toggle ? 'S-' : 'C-') + d.roomNum;
+                                toggle = !toggle; 
+                            } else {
+                                d.displayRoom = d.roomNum.toString();
+                            }
+                        });
+                    } else {
+                        rawData.forEach(d => {
+                            d.displayRoom = d.roomNum.toString();
+                        });
+                    }
+
                     document.getElementById('tableBody').innerHTML = '';
-                    processedData.forEach(d => {
-                        addRow(d.displayTime, d.room);
-                    });
+                    rawData.forEach(d => addRow(d.displayTime, d.displayRoom));
 
                     statusDiv.innerText = "¡Datos extraídos con éxito!";
+                    document.getElementById('editorTitle').innerText = "Vista Previa (Nuevo Horario)";
                     document.getElementById('editorSection').style.display = 'block';
 
                 } catch (error) {
@@ -250,36 +318,41 @@
             reader.readAsArrayBuffer(file);
         }
 
+        // MOTOR DE TIEMPO CON REGLA DE REDONDEO (>25 SEGUNDOS)
         function modifyTime(timeVal, offsetMinutes) {
-            let hours = 0;
-            let minutes = 0;
+            let hours = 0, minutes = 0, seconds = 0;
 
             if (timeVal instanceof Date && !isNaN(timeVal.getTime())) {
                 hours = timeVal.getHours();
                 minutes = timeVal.getMinutes();
-            } 
-            else if (typeof timeVal === 'string' && timeVal.match(/^\d{1,2}:\d{2}/)) {
+                seconds = timeVal.getSeconds();
+            } else if (typeof timeVal === 'string' && timeVal.match(/^\d{1,2}:\d{2}/)) {
                 let parts = timeVal.split(':');
                 hours = parseInt(parts[0], 10);
                 minutes = parseInt(parts[1], 10);
-            } 
-            else if (typeof timeVal === 'number') {
+                seconds = parts[2] ? parseInt(parts[2], 10) : 0;
+            } else if (typeof timeVal === 'number') {
                 let totalSeconds = Math.round(timeVal * 24 * 3600);
                 hours = Math.floor(totalSeconds / 3600) % 24;
                 minutes = Math.floor((totalSeconds % 3600) / 60);
-            } 
-            else {
+                seconds = totalSeconds % 60;
+            } else {
                 let date = new Date(timeVal);
                 if (!isNaN(date.getTime())) {
                     hours = date.getHours();
                     minutes = date.getMinutes();
+                    seconds = date.getSeconds();
                 } else {
                     return null; 
                 }
             }
 
+            // Regla de inventario: si los segundos son mayores a 25, sumar 1 minuto
+            if (seconds > 25) {
+                minutes += 1;
+            }
+
             let totalMinutes = (hours * 60) + minutes + offsetMinutes;
-            
             hours = Math.floor(totalMinutes / 60) % 24;
             if (hours < 0) hours += 24; 
             minutes = ((totalMinutes % 60) + 60) % 60;
@@ -298,27 +371,119 @@
             };
         }
 
-        function addRow(time, room) {
+        function addRow(time, roomStr) {
             const tbody = document.getElementById('tableBody');
             const tr = document.createElement('tr');
             tr.innerHTML = `
                 <td><input type="text" class="edit-input time-input" value="${time}"></td>
-                <td><input type="number" class="edit-input room-input" value="${room}"></td>
-                <td><button onclick="this.parentElement.parentElement.remove()" style="background-color: #dc3545; padding: 5px 10px;">X</button></td>
+                <td><input type="text" class="edit-input room-input" value="${roomStr}"></td>
+                <td><button onclick="this.parentElement.parentElement.remove()" class="btn-danger" style="padding: 5px 10px;">X</button></td>
             `;
             tbody.appendChild(tr);
         }
 
+        // ==========================================
+        // MÓDULO DE BASE DE DATOS (LOCALSTORAGE)
+        // ==========================================
+        function getDBSchedules() {
+            return JSON.parse(localStorage.getItem('cinepolis_schedules')) || [];
+        }
+
+        function saveScheduleToDB() {
+            const title = document.getElementById('dayTitle').value || 'Sin Título';
+            const times = document.querySelectorAll('.time-input');
+            const rooms = document.querySelectorAll('.room-input');
+            
+            let currentData = [];
+            for (let i = 0; i < times.length; i++) {
+                if (times[i].value.trim() !== "" && rooms[i].value.trim() !== "") {
+                    currentData.push({ displayTime: times[i].value, roomStr: rooms[i].value });
+                }
+            }
+
+            if(currentData.length === 0) {
+                alert("La tabla está vacía. No hay nada que guardar.");
+                return;
+            }
+
+            const newRecord = {
+                id: Date.now(),
+                date: new Date().toLocaleDateString() + ' ' + new Date().toLocaleTimeString(),
+                title: title,
+                data: currentData
+            };
+
+            let db = getDBSchedules();
+            db.unshift(newRecord); // Guardar al inicio de la lista
+            localStorage.setItem('cinepolis_schedules', JSON.stringify(db));
+            
+            alert("Horario guardado en la base de datos.");
+            renderSavedSchedules();
+        }
+
+        function renderSavedSchedules() {
+            const db = getDBSchedules();
+            const list = document.getElementById('savedSchedulesList');
+            
+            if (db.length === 0) {
+                list.innerHTML = '<li>No hay horarios guardados en el inventario.</li>';
+                return;
+            }
+
+            list.innerHTML = '';
+            db.forEach(record => {
+                const li = document.createElement('li');
+                li.className = 'db-item';
+                li.innerHTML = `
+                    <div>
+                        <strong>${record.title}</strong><br>
+                        <small style="color: #666;">Guardado: ${record.date} | ${record.data.length} funciones</small>
+                    </div>
+                    <div style="display: flex; gap: 5px;">
+                        <button onclick="loadSchedule(${record.id})">Cargar y Editar</button>
+                        <button onclick="deleteSchedule(${record.id})" class="btn-danger">Borrar</button>
+                    </div>
+                `;
+                list.appendChild(li);
+            });
+        }
+
+        function loadSchedule(id) {
+            const db = getDBSchedules();
+            const record = db.find(r => r.id === id);
+            
+            if (record) {
+                document.getElementById('dayTitle').value = record.title;
+                document.getElementById('tableBody').innerHTML = '';
+                
+                record.data.forEach(d => addRow(d.displayTime, d.roomStr));
+                
+                document.getElementById('editorTitle').innerText = "Vista Previa (Editando Horario Guardado)";
+                document.getElementById('editorSection').style.display = 'block';
+                window.scrollTo({ top: document.getElementById('editorSection').offsetTop, behavior: 'smooth' });
+            }
+        }
+
+        function deleteSchedule(id) {
+            if(confirm("¿Estás seguro de eliminar este horario de la base de datos?")) {
+                let db = getDBSchedules();
+                db = db.filter(r => r.id !== id);
+                localStorage.setItem('cinepolis_schedules', JSON.stringify(db));
+                renderSavedSchedules();
+            }
+        }
+
+        // ==========================================
+        // MÓDULO DE IMPRESIÓN PDF
+        // ==========================================
         function generatePDF() {
-            const minRoom = parseInt(document.getElementById('minRoom').value) || 1;
             const times = document.querySelectorAll('.time-input');
             const rooms = document.querySelectorAll('.room-input');
             
             let validData = [];
             for (let i = 0; i < times.length; i++) {
-                let roomNum = parseInt(rooms[i].value);
-                if (times[i].value.trim() !== "" && !isNaN(roomNum) && roomNum >= minRoom) {
-                    validData.push({ displayTime: times[i].value, room: roomNum });
+                if (times[i].value.trim() !== "" && rooms[i].value.trim() !== "") {
+                    validData.push({ displayTime: times[i].value, roomStr: rooms[i].value });
                 }
             }
 
@@ -331,21 +496,19 @@
             const doc = new jsPDF({ orientation: 'l', unit: 'mm', format: 'letter' });
             const title = document.getElementById('dayTitle').value || 'MARTES :)';
             
-            const col1W = 28;
-            const col2W = 14;
-            const subW = col1W + col2W;
+            const col1W = 35; 
+            const col2W = 16; 
+            const subW = col1W + col2W; 
             const gap = 3; 
             const totalW = subW + gap + subW; 
 
             function drawBlock(startX, blockData) {
-                // Cálculo simétrico exacto sin importar la longitud de los datos
                 let maxRows = Math.ceil(blockData.length / 2);
-                if (maxRows < 15) maxRows = 15; // Mínimo estético para que no se vea una tablita enana
+                if (maxRows < 15) maxRows = 15; 
                 
                 let rowHeight = 5.5; 
                 let fontSize = 10;
                 
-                // Si el día estuvo muy ocupado, encogemos las filas para que no se desborde del papel
                 if (maxRows > 32) {
                     rowHeight = 180 / maxRows; 
                     if(rowHeight < 4.5) fontSize = 8; 
@@ -354,8 +517,8 @@
                 const subCol1 = [];
                 const subCol2 = [];
                 for(let i=0; i < maxRows; i++) {
-                    subCol1.push(blockData[i] || {displayTime: '', room: ''});
-                    subCol2.push(blockData[i + maxRows] || {displayTime: '', room: ''});
+                    subCol1.push(blockData[i] || {displayTime: '', roomStr: ''});
+                    subCol2.push(blockData[i + maxRows] || {displayTime: '', roomStr: ''});
                 }
 
                 const currentY = 12;
@@ -384,8 +547,9 @@
                             doc.setFont("helvetica", "normal");
                             doc.setFontSize(fontSize);
                             doc.text(items[i].displayTime, x + 2, y + (rowHeight * 0.75));
+                            
                             doc.setFont("helvetica", "bold");
-                            doc.text(items[i].room.toString(), x + col1W + (col2W / 2), y + (rowHeight * 0.75), { align: "center" });
+                            doc.text(items[i].roomStr.toString(), x + col1W + (col2W / 2), y + (rowHeight * 0.75), { align: "center" });
                         }
                     }
 
@@ -397,7 +561,6 @@
                     doc.line(x, startY, x, startY + h); 
                     doc.line(x, startY + h, x + subW - corner, startY + h); 
                     doc.line(x + subW, startY, x + subW, startY + h - corner); 
-
                     doc.line(x + subW - corner, startY + h, x + subW, startY + h - corner);
 
                     doc.setLineWidth(0.2);
@@ -409,10 +572,10 @@
                 drawSubCol(startX + subW + gap, subCol2);
             }
 
-            drawBlock(26, validData);  
-            drawBlock(166, validData); 
+            drawBlock(20, validData);  
+            drawBlock(155, validData); 
 
-            doc.save("horarios_exactos_final.pdf");
+            doc.save("horarios_operativos_cine.pdf");
         }
     </script>
 </body>
