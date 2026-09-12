@@ -25,6 +25,19 @@
             margin-bottom: 20px;
         }
         h1, h2 { color: #0056b3; font-size: 22px; margin-top: 0; }
+        
+        /* Contenedor de Botones Superiores */
+        .top-actions {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+            margin-bottom: 20px;
+            background: #e9ecef;
+            padding: 15px;
+            border-radius: 8px;
+            border: 1px solid #ced4da;
+        }
+
         .control-group {
             display: flex;
             gap: 15px;
@@ -59,6 +72,8 @@
             font-size: 15px;
             font-weight: bold;
             transition: 0.2s;
+            flex: 1;
+            min-width: 150px;
         }
         button:hover { background-color: #004494; }
         .btn-success { background-color: #28a745; }
@@ -67,56 +82,43 @@
         .btn-warning:hover { background-color: #e0a800; }
         .btn-danger { background-color: #dc3545; }
         .btn-danger:hover { background-color: #c82333; }
-        #status { margin-top: 10px; font-weight: bold; color: #d9534f; }
-        table {
-            width: 100%;
-            border-collapse: collapse;
-            margin-top: 15px;
-        }
-        th, td {
-            border: 1px solid #ddd;
-            padding: 6px;
-            text-align: center;
-        }
+        
+        #status { margin-bottom: 15px; font-weight: bold; color: #d9534f; text-align: center; }
+        table { width: 100%; border-collapse: collapse; margin-top: 15px; }
+        th, td { border: 1px solid #ddd; padding: 6px; text-align: center; }
         th { background-color: #e9ecef; }
-        input.edit-input {
-            width: 100%;
-            border: none;
-            background: transparent;
-            font-size: 14px;
-            text-align: center;
-        }
+        input.edit-input { width: 100%; border: none; background: transparent; font-size: 14px; text-align: center; }
+        
         .alt-box {
             background: #eef2f5;
             border: 1px solid #c8d4dd;
-            padding: 10px;
+            padding: 15px;
             border-radius: 6px;
             margin-top: 10px;
         }
-        .db-list {
-            list-style: none;
-            padding: 0;
-        }
-        .db-item {
-            background: #f8f9fa;
-            border: 1px solid #ddd;
-            padding: 10px 15px;
-            margin-bottom: 8px;
-            border-radius: 5px;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-        }
+        .db-list { list-style: none; padding: 0; }
+        .db-item { background: #f8f9fa; border: 1px solid #ddd; padding: 10px 15px; margin-bottom: 8px; border-radius: 5px; display: flex; justify-content: space-between; align-items: center; }
     </style>
 </head>
 <body>
 
     <div class="card">
-        <h1>Operaciones: Cierres de Salas Local</h1>
+        <h1>Control Operativo (Salas y Casetas)</h1>
         
+        <!-- BOTONES DE ACCIÓN PRINCIPALES ARRIBA -->
+        <div class="top-actions">
+            <button onclick="processExcel()">1. Extraer Horarios</button>
+            <button onclick="addRow('', '')">+ Fila Manual</button>
+            <button onclick="saveScheduleToDB()" class="btn-warning">Guardar en Historial</button>
+            <button onclick="generatePDF()" class="btn-success">Imprimir Formato PDF</button>
+        </div>
+
+        <div id="status"></div>
+        
+        <!-- CONFIGURACIÓN DEL ARCHIVO -->
         <div class="control-group">
             <div class="control-item" style="flex: 100%;">
-                <label>1. Cargar Archivo Excel del Sistema</label>
+                <label>Cargar Archivo Excel del Sistema</label>
                 <input type="file" id="excelInput" accept=".xlsx, .xls">
             </div>
             <div class="control-item">
@@ -141,7 +143,9 @@
             </div>
         </div>
 
+        <!-- CONFIGURACIÓN DE ALTERNANCIA (SALAS Y CASETAS) -->
         <div class="alt-box">
+            <h3 style="margin-top: 0; font-size: 16px; color: #0056b3;">Reglas de Asignación (Salas / Casetas)</h3>
             <div style="display: flex; gap: 15px; flex-wrap: wrap;">
                 <div class="control-item">
                     <label>¿Alternar Salas y Casetas (S/C)?</label>
@@ -151,34 +155,32 @@
                         <option value="numeric">Sí, Por número de Sala</option>
                     </select>
                 </div>
-                <div class="control-item" id="altSettingsBox" style="display: none; flex-direction: row; gap: 10px;">
-                    <div>
-                        <label>Empezar con Sala:</label>
-                        <input type="number" id="altStartRoom" value="1" min="1" style="width: 80px;">
-                    </div>
-                    <div>
-                        <label>Y esa será:</label>
-                        <select id="altStartRole">
-                            <option value="S">Sala (S)</option>
-                            <option value="C">Caseta (C)</option>
-                        </select>
-                    </div>
+                
+                <div class="control-item" id="altSettingsBox1" style="display: none;">
+                    <label>Alternar a partir de la Sala:</label>
+                    <input type="number" id="altStartRoom" value="1" min="1">
+                    <small style="font-size: 11px; color: #666;">Filtrar / Empezar en esta sala.</small>
+                </div>
+                
+                <div class="control-item" id="altSettingsBox2" style="display: none;">
+                    <label>Rol inicial:</label>
+                    <select id="altStartRole">
+                        <option value="S">Sala (S)</option>
+                        <option value="C">Caseta (C)</option>
+                    </select>
+                </div>
+
+                <!-- NUEVO FILTRO DE HORA PARA CASETAS -->
+                <div class="control-item" id="altSettingsBox3" style="display: none;">
+                    <label>Casetas empiezan desde las:</label>
+                    <input type="time" id="timeCasetasFilter" value="19:00">
+                    <small style="font-size: 11px; color: #666;">Antes de esta hora, todo será Sala (S).</small>
                 </div>
             </div>
         </div>
-
-        <button onclick="processExcel()" style="margin-top: 15px;">Extraer Horarios</button>
-        <div id="status"></div>
     </div>
 
-    <!-- Módulo de Base de Datos Local -->
-    <div class="card">
-        <h2>Historial de Horarios Guardados (Local)</h2>
-        <ul class="db-list" id="savedSchedulesList">
-            <li>No hay horarios guardados en el navegador.</li>
-        </ul>
-    </div>
-
+    <!-- VISTA PREVIA Y EDICIÓN -->
     <div class="card" id="editorSection" style="display: none;">
         <h2 id="editorTitle">Vista Previa y Edición</h2>
         
@@ -193,23 +195,28 @@
             <tbody id="tableBody">
             </tbody>
         </table>
-        
-        <div style="margin-top: 15px; display: flex; gap: 10px; flex-wrap: wrap;">
-            <button onclick="addRow('', '')">+ Agregar Fila Manual</button>
-            <button onclick="saveScheduleToDB()" class="btn-warning">Guardar en Historial Local</button>
-            <button onclick="generatePDF()" class="btn-success">Imprimir Formato Doble (PDF)</button>
-        </div>
+    </div>
+
+    <!-- HISTORIAL DE HORARIOS GUARDADOS -->
+    <div class="card">
+        <h2>Historial de Horarios Guardados (Local)</h2>
+        <ul class="db-list" id="savedSchedulesList">
+            <li>No hay horarios guardados en el navegador.</li>
+        </ul>
     </div>
 
     <script>
-        // Cargar historial local al iniciar
+        // Inicialización
         window.onload = function() {
             renderSavedSchedules();
         };
 
         function toggleAltSettings() {
             const mode = document.getElementById('altMode').value;
-            document.getElementById('altSettingsBox').style.display = (mode !== 'none') ? 'flex' : 'none';
+            const displayStyle = (mode !== 'none') ? 'flex' : 'none';
+            document.getElementById('altSettingsBox1').style.display = displayStyle;
+            document.getElementById('altSettingsBox2').style.display = displayStyle;
+            document.getElementById('altSettingsBox3').style.display = displayStyle;
         }
 
         function processExcel() {
@@ -224,13 +231,24 @@
                 return;
             }
 
+            // Minutos para Filtro de Cierres General
             let minStartMinutes = 0;
             if (startTimeStr) {
                 let parts = startTimeStr.split(':');
                 minStartMinutes = parseInt(parts[0]) * 60 + parseInt(parts[1]);
             }
 
-            statusDiv.innerText = "Procesando...";
+            // Minutos para Filtro de Casetas
+            const timeCasetasStr = document.getElementById('timeCasetasFilter').value;
+            let minCasetasMinutes = 0;
+            if (timeCasetasStr) {
+                let partsC = timeCasetasStr.split(':');
+                minCasetasMinutes = parseInt(partsC[0]) * 60 + parseInt(partsC[1]);
+            }
+
+            statusDiv.style.color = '#0056b3';
+            statusDiv.innerText = "Procesando archivo Excel...";
+            
             const file = input.files[0];
             const reader = new FileReader();
 
@@ -243,6 +261,7 @@
                     const json = XLSX.utils.sheet_to_json(worksheet);
                     
                     let rawData = [];
+                    const altStartRoom = parseInt(document.getElementById('altStartRoom').value) || 1;
 
                     json.forEach(row => {
                         let auditorium = row['AUDITORIUM'];
@@ -252,10 +271,11 @@
                             let roomMatch = String(auditorium).match(/\d+/);
                             let roomNum = roomMatch ? parseInt(roomMatch[0]) : null;
                             
-                            if (roomNum !== null) {
+                            // Filtrar desde la sala de inicio elegida
+                            if (roomNum !== null && roomNum >= altStartRoom) {
                                 let timeObj = modifyTime(timeVal, offsetMinutes);
                                 if (timeObj) {
-                                    // Filtrar desde la hora de inicio (madrugadas siempre pasan el filtro)
+                                    // Filtrar desde la hora de inicio general
                                     if (timeObj.sortValue >= minStartMinutes) {
                                         rawData.push({
                                             displayTime: timeObj.display,
@@ -269,7 +289,8 @@
                     });
 
                     if (rawData.length === 0) {
-                        statusDiv.innerText = "No se encontraron funciones después de la hora indicada.";
+                        statusDiv.style.color = '#d9534f';
+                        statusDiv.innerText = "No se encontraron funciones con esos filtros.";
                         return;
                     }
 
@@ -278,32 +299,42 @@
 
                     // Lógica de Alternancia Salas/Casetas
                     const altMode = document.getElementById('altMode').value;
-                    const altStartRoom = parseInt(document.getElementById('altStartRoom').value) || 1;
                     const altStartRole = document.getElementById('altStartRole').value;
 
                     if (altMode === 'numeric') {
                         rawData.forEach(d => {
-                            if (d.roomNum >= altStartRoom) {
-                                let diff = d.roomNum - altStartRoom;
-                                let role = (diff % 2 === 0) ? altStartRole : (altStartRole === 'S' ? 'C' : 'S');
-                                d.displayRoom = `${role}-${d.roomNum}`;
-                            } else {
-                                d.displayRoom = d.roomNum.toString();
-                            }
+                            let forceSala = minCasetasMinutes > 0 && d.sortValue < minCasetasMinutes;
+                            
+                            let diff = d.roomNum - altStartRoom;
+                            let role = (diff % 2 === 0) ? altStartRole : (altStartRole === 'S' ? 'C' : 'S');
+                            
+                            // Si la función es antes de la hora de casetas, forzamos "S"
+                            if (forceSala) role = 'S';
+                            
+                            d.displayRoom = `${role}-${d.roomNum}`;
                         });
                     } else if (altMode === 'chrono') {
                         let toggle = (altStartRole === 'S'); 
                         let alternatingStarted = false;
 
                         rawData.forEach(d => {
+                            let forceSala = minCasetasMinutes > 0 && d.sortValue < minCasetasMinutes;
+
                             if (!alternatingStarted && d.roomNum === altStartRoom) {
                                 alternatingStarted = true;
                             }
                             if (alternatingStarted) {
-                                d.displayRoom = (toggle ? 'S-' : 'C-') + d.roomNum;
-                                toggle = !toggle; 
+                                let role = toggle ? 'S' : 'C';
+                                
+                                if (forceSala) {
+                                    role = 'S';
+                                } else {
+                                    // Solo alternamos turno si NO fue forzado a Sala por el horario
+                                    toggle = !toggle; 
+                                }
+                                d.displayRoom = `${role}-${d.roomNum}`;
                             } else {
-                                d.displayRoom = d.roomNum.toString();
+                                d.displayRoom = forceSala ? `S-${d.roomNum}` : d.roomNum.toString();
                             }
                         });
                     } else {
@@ -316,19 +347,21 @@
                     document.getElementById('tableBody').innerHTML = '';
                     rawData.forEach(d => addRow(d.displayTime, d.displayRoom));
 
+                    statusDiv.style.color = '#28a745';
                     statusDiv.innerText = `¡${rawData.length} funciones extraídas con éxito!`;
                     document.getElementById('editorTitle').innerText = "Vista Previa (Nuevo Horario)";
                     document.getElementById('editorSection').style.display = 'block';
 
                 } catch (error) {
                     console.error(error);
+                    statusDiv.style.color = '#d9534f';
                     statusDiv.innerText = "Hubo un error al leer el archivo Excel.";
                 }
             };
             reader.readAsArrayBuffer(file);
         }
 
-        // Motor de tiempo: Convierte, ajusta regla de >25s y formatea a 12h
+        // Motor de tiempo (Convierte, suma 1 min si seg > 25)
         function modifyTime(timeVal, offsetMinutes) {
             let hours = 0, minutes = 0, seconds = 0;
 
@@ -357,17 +390,13 @@
                 }
             }
 
-            // Sumar 1 minuto si pasa de 25 segundos
-            if (seconds > 25) {
-                minutes += 1;
-            }
+            if (seconds > 25) minutes += 1;
 
             let totalMinutes = (hours * 60) + minutes + offsetMinutes;
             hours = Math.floor(totalMinutes / 60) % 24;
             if (hours < 0) hours += 24; 
             minutes = ((totalMinutes % 60) + 60) % 60;
 
-            // Madrugadas al final (0-3 AM)
             let sortValue = (hours >= 0 && hours <= 3) ? hours + 24 : hours;
             sortValue = sortValue * 60 + minutes;
 
@@ -451,7 +480,7 @@
                         <small style="color: #666;">Guardado: ${record.date} | ${record.data.length} funciones</small>
                     </div>
                     <div style="display: flex; gap: 5px;">
-                        <button onclick="loadSchedule(${record.id})">Cargar y Editar</button>
+                        <button onclick="loadSchedule(${record.id})">Cargar a Tabla</button>
                         <button onclick="deleteSchedule(${record.id})" class="btn-danger">Borrar</button>
                     </div>
                 `;
@@ -485,7 +514,7 @@
         }
 
         // ==========================================
-        // IMPRESIÓN DEL PDF EXACTO (DOS COLUMNAS, DOBLE COPIA)
+        // IMPRESIÓN DEL PDF EXACTO (DOS COLUMNAS)
         // ==========================================
         function generatePDF() {
             const times = document.querySelectorAll('.time-input');
@@ -507,7 +536,7 @@
             const doc = new jsPDF({ orientation: 'l', unit: 'mm', format: 'letter' });
             const title = document.getElementById('dayTitle').value || 'MARTES :)';
             
-            const col1W = 35; // Celda amplia para nombre
+            const col1W = 35; 
             const col2W = 16; 
             const subW = col1W + col2W; 
             const gap = 3; 
@@ -534,7 +563,6 @@
 
                 const currentY = 12;
 
-                // Dibujo de Encabezado
                 doc.setLineWidth(0.4);
                 doc.line(startX + 8, currentY, startX + totalW - 8, currentY); 
                 doc.line(startX, currentY + 6, startX + totalW, currentY + 6); 
@@ -558,7 +586,6 @@
                         if (items[i].displayTime !== '') {
                             doc.setFont("helvetica", "normal");
                             doc.setFontSize(fontSize);
-                            // Hora a la izquierda para dejar libre el espacio de nombre
                             doc.text(items[i].displayTime, x + 2, y + (rowHeight * 0.75));
                             
                             doc.setFont("helvetica", "bold");
@@ -588,7 +615,7 @@
             drawBlock(20, validData);  
             drawBlock(155, validData); 
 
-            doc.save("horarios_cierres_local.pdf");
+            doc.save("horarios_operativos_local.pdf");
         }
     </script>
 </body>
