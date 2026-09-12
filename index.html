@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Módulo de Cierres - Sistema de Inventario</title>
+    <title>Módulo de Cierres - Sistema Operativo Local</title>
     
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
@@ -67,9 +67,7 @@
         .btn-warning:hover { background-color: #e0a800; }
         .btn-danger { background-color: #dc3545; }
         .btn-danger:hover { background-color: #c82333; }
-        
         #status { margin-top: 10px; font-weight: bold; color: #d9534f; }
-        
         table {
             width: 100%;
             border-collapse: collapse;
@@ -114,11 +112,11 @@
 <body>
 
     <div class="card">
-        <h1>Operaciones: Cierres de Salas</h1>
+        <h1>Operaciones: Cierres de Salas Local</h1>
         
         <div class="control-group">
             <div class="control-item" style="flex: 100%;">
-                <label>Cargar Archivo Excel del Sistema</label>
+                <label>1. Cargar Archivo Excel del Sistema</label>
                 <input type="file" id="excelInput" accept=".xlsx, .xls">
             </div>
             <div class="control-item">
@@ -133,12 +131,13 @@
                 </select>
             </div>
             <div class="control-item">
-                <label>Ajuste tiempo (Min)</label>
-                <input type="number" id="timeOffset" value="0" placeholder="Ej. 10">
+                <label>Hora de inicio de cierres (24h):</label>
+                <input type="time" id="startTimeFilter" value="15:30">
+                <small style="font-size: 11px; color: #666;">Ignora funciones previas a esta hora.</small>
             </div>
             <div class="control-item">
-                <label>Desde Sala Mínima</label>
-                <input type="number" id="minRoom" value="1" min="1" max="50">
+                <label>Ajuste tiempo (Min)</label>
+                <input type="number" id="timeOffset" value="0" placeholder="Ej. 10">
             </div>
         </div>
 
@@ -154,11 +153,11 @@
                 </div>
                 <div class="control-item" id="altSettingsBox" style="display: none; flex-direction: row; gap: 10px;">
                     <div>
-                        <label>A partir de la Sala:</label>
+                        <label>Empezar con Sala:</label>
                         <input type="number" id="altStartRoom" value="1" min="1" style="width: 80px;">
                     </div>
                     <div>
-                        <label>Esa sala será:</label>
+                        <label>Y esa será:</label>
                         <select id="altStartRole">
                             <option value="S">Sala (S)</option>
                             <option value="C">Caseta (C)</option>
@@ -168,15 +167,15 @@
             </div>
         </div>
 
-        <button onclick="processExcel()" style="margin-top: 15px;">Generar Horarios</button>
+        <button onclick="processExcel()" style="margin-top: 15px;">Extraer Horarios</button>
         <div id="status"></div>
     </div>
 
-    <!-- Módulo de Base de Datos / Historial -->
+    <!-- Módulo de Base de Datos Local -->
     <div class="card">
-        <h2>Base de Datos de Horarios Guardados</h2>
+        <h2>Historial de Horarios Guardados (Local)</h2>
         <ul class="db-list" id="savedSchedulesList">
-            <li>No hay horarios guardados en el inventario.</li>
+            <li>No hay horarios guardados en el navegador.</li>
         </ul>
     </div>
 
@@ -186,7 +185,7 @@
         <table id="dataTable">
             <thead>
                 <tr>
-                    <th>Hora (Espacio para Nombre)</th>
+                    <th>Hora (Espacio amplio para Nombre)</th>
                     <th>Sala / Caseta</th>
                     <th>Acción</th>
                 </tr>
@@ -197,13 +196,13 @@
         
         <div style="margin-top: 15px; display: flex; gap: 10px; flex-wrap: wrap;">
             <button onclick="addRow('', '')">+ Agregar Fila Manual</button>
-            <button onclick="saveScheduleToDB()" class="btn-warning">Guardar en Base de Datos</button>
+            <button onclick="saveScheduleToDB()" class="btn-warning">Guardar en Historial Local</button>
             <button onclick="generatePDF()" class="btn-success">Imprimir Formato Doble (PDF)</button>
         </div>
     </div>
 
     <script>
-        // Inicializar la base de datos al cargar la página
+        // Cargar historial local al iniciar
         window.onload = function() {
             renderSavedSchedules();
         };
@@ -217,12 +216,18 @@
             const input = document.getElementById('excelInput');
             const timeField = document.getElementById('timeField').value;
             const offsetMinutes = parseInt(document.getElementById('timeOffset').value) || 0;
-            const minRoom = parseInt(document.getElementById('minRoom').value) || 1;
+            const startTimeStr = document.getElementById('startTimeFilter').value;
             const statusDiv = document.getElementById('status');
 
             if (!input.files || input.files.length === 0) {
                 alert("Por favor selecciona tu archivo de Excel.");
                 return;
+            }
+
+            let minStartMinutes = 0;
+            if (startTimeStr) {
+                let parts = startTimeStr.split(':');
+                minStartMinutes = parseInt(parts[0]) * 60 + parseInt(parts[1]);
             }
 
             statusDiv.innerText = "Procesando...";
@@ -247,27 +252,31 @@
                             let roomMatch = String(auditorium).match(/\d+/);
                             let roomNum = roomMatch ? parseInt(roomMatch[0]) : null;
                             
-                            if (roomNum !== null && roomNum >= minRoom) {
+                            if (roomNum !== null) {
                                 let timeObj = modifyTime(timeVal, offsetMinutes);
                                 if (timeObj) {
-                                    rawData.push({
-                                        displayTime: timeObj.display,
-                                        sortValue: timeObj.sortValue,
-                                        roomNum: roomNum
-                                    });
+                                    // Filtrar desde la hora de inicio (madrugadas siempre pasan el filtro)
+                                    if (timeObj.sortValue >= minStartMinutes) {
+                                        rawData.push({
+                                            displayTime: timeObj.display,
+                                            sortValue: timeObj.sortValue,
+                                            roomNum: roomNum
+                                        });
+                                    }
                                 }
                             }
                         }
                     });
 
                     if (rawData.length === 0) {
-                        statusDiv.innerText = "No se encontraron datos válidos.";
+                        statusDiv.innerText = "No se encontraron funciones después de la hora indicada.";
                         return;
                     }
 
+                    // Ordenar cronológicamente
                     rawData.sort((a, b) => a.sortValue - b.sortValue);
 
-                    // Alternancia S/C
+                    // Lógica de Alternancia Salas/Casetas
                     const altMode = document.getElementById('altMode').value;
                     const altStartRoom = parseInt(document.getElementById('altStartRoom').value) || 1;
                     const altStartRole = document.getElementById('altStartRole').value;
@@ -303,10 +312,11 @@
                         });
                     }
 
+                    // Dibujar tabla
                     document.getElementById('tableBody').innerHTML = '';
                     rawData.forEach(d => addRow(d.displayTime, d.displayRoom));
 
-                    statusDiv.innerText = "¡Datos extraídos con éxito!";
+                    statusDiv.innerText = `¡${rawData.length} funciones extraídas con éxito!`;
                     document.getElementById('editorTitle').innerText = "Vista Previa (Nuevo Horario)";
                     document.getElementById('editorSection').style.display = 'block';
 
@@ -318,7 +328,7 @@
             reader.readAsArrayBuffer(file);
         }
 
-        // MOTOR DE TIEMPO CON REGLA DE REDONDEO (>25 SEGUNDOS)
+        // Motor de tiempo: Convierte, ajusta regla de >25s y formatea a 12h
         function modifyTime(timeVal, offsetMinutes) {
             let hours = 0, minutes = 0, seconds = 0;
 
@@ -347,7 +357,7 @@
                 }
             }
 
-            // Regla de inventario: si los segundos son mayores a 25, sumar 1 minuto
+            // Sumar 1 minuto si pasa de 25 segundos
             if (seconds > 25) {
                 minutes += 1;
             }
@@ -357,6 +367,7 @@
             if (hours < 0) hours += 24; 
             minutes = ((totalMinutes % 60) + 60) % 60;
 
+            // Madrugadas al final (0-3 AM)
             let sortValue = (hours >= 0 && hours <= 3) ? hours + 24 : hours;
             sortValue = sortValue * 60 + minutes;
 
@@ -383,10 +394,10 @@
         }
 
         // ==========================================
-        // MÓDULO DE BASE DE DATOS (LOCALSTORAGE)
+        // BASE DE DATOS LOCAL (LOCALSTORAGE)
         // ==========================================
         function getDBSchedules() {
-            return JSON.parse(localStorage.getItem('cinepolis_schedules')) || [];
+            return JSON.parse(localStorage.getItem('cinepolis_schedules_local')) || [];
         }
 
         function saveScheduleToDB() {
@@ -414,10 +425,10 @@
             };
 
             let db = getDBSchedules();
-            db.unshift(newRecord); // Guardar al inicio de la lista
-            localStorage.setItem('cinepolis_schedules', JSON.stringify(db));
+            db.unshift(newRecord); 
+            localStorage.setItem('cinepolis_schedules_local', JSON.stringify(db));
             
-            alert("Horario guardado en la base de datos.");
+            alert("Horario guardado en el historial local del navegador.");
             renderSavedSchedules();
         }
 
@@ -426,7 +437,7 @@
             const list = document.getElementById('savedSchedulesList');
             
             if (db.length === 0) {
-                list.innerHTML = '<li>No hay horarios guardados en el inventario.</li>';
+                list.innerHTML = '<li>No hay horarios guardados en el navegador.</li>';
                 return;
             }
 
@@ -465,16 +476,16 @@
         }
 
         function deleteSchedule(id) {
-            if(confirm("¿Estás seguro de eliminar este horario de la base de datos?")) {
+            if(confirm("¿Estás seguro de eliminar este horario del historial local?")) {
                 let db = getDBSchedules();
                 db = db.filter(r => r.id !== id);
-                localStorage.setItem('cinepolis_schedules', JSON.stringify(db));
+                localStorage.setItem('cinepolis_schedules_local', JSON.stringify(db));
                 renderSavedSchedules();
             }
         }
 
         // ==========================================
-        // MÓDULO DE IMPRESIÓN PDF
+        // IMPRESIÓN DEL PDF EXACTO (DOS COLUMNAS, DOBLE COPIA)
         // ==========================================
         function generatePDF() {
             const times = document.querySelectorAll('.time-input');
@@ -496,7 +507,7 @@
             const doc = new jsPDF({ orientation: 'l', unit: 'mm', format: 'letter' });
             const title = document.getElementById('dayTitle').value || 'MARTES :)';
             
-            const col1W = 35; 
+            const col1W = 35; // Celda amplia para nombre
             const col2W = 16; 
             const subW = col1W + col2W; 
             const gap = 3; 
@@ -523,6 +534,7 @@
 
                 const currentY = 12;
 
+                // Dibujo de Encabezado
                 doc.setLineWidth(0.4);
                 doc.line(startX + 8, currentY, startX + totalW - 8, currentY); 
                 doc.line(startX, currentY + 6, startX + totalW, currentY + 6); 
@@ -546,6 +558,7 @@
                         if (items[i].displayTime !== '') {
                             doc.setFont("helvetica", "normal");
                             doc.setFontSize(fontSize);
+                            // Hora a la izquierda para dejar libre el espacio de nombre
                             doc.text(items[i].displayTime, x + 2, y + (rowHeight * 0.75));
                             
                             doc.setFont("helvetica", "bold");
@@ -575,7 +588,7 @@
             drawBlock(20, validData);  
             drawBlock(155, validData); 
 
-            doc.save("horarios_operativos_cine.pdf");
+            doc.save("horarios_cierres_local.pdf");
         }
     </script>
 </body>
