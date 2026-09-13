@@ -26,7 +26,6 @@
         }
         h1, h2 { color: #0056b3; font-size: 22px; margin-top: 0; }
         
-        /* Contenedor de Botones Superiores */
         .top-actions {
             display: flex;
             gap: 10px;
@@ -83,7 +82,7 @@
         .btn-danger { background-color: #dc3545; }
         .btn-danger:hover { background-color: #c82333; }
         
-        #status { margin-bottom: 15px; font-weight: bold; color: #d9534f; text-align: center; }
+        #status { margin-bottom: 15px; font-weight: bold; text-align: center; font-size: 15px; }
         table { width: 100%; border-collapse: collapse; margin-top: 15px; }
         th, td { border: 1px solid #ddd; padding: 6px; text-align: center; }
         th { background-color: #e9ecef; }
@@ -118,8 +117,9 @@
         <!-- CONFIGURACIÓN DEL ARCHIVO -->
         <div class="control-group">
             <div class="control-item" style="flex: 100%;">
-                <label>Cargar Archivo Excel del Sistema</label>
-                <input type="file" id="excelInput" accept=".xlsx, .xls">
+                <label>Cargar Archivos (Puedes seleccionar Excel, CSV y TSV al mismo tiempo)</label>
+                <!-- NUEVO: Etiqueta "multiple" añadida -->
+                <input type="file" id="excelInput" accept=".xlsx, .xls, .csv, .tsv" multiple>
             </div>
             <div class="control-item">
                 <label>Título del día</label>
@@ -170,7 +170,6 @@
                     </select>
                 </div>
 
-                <!-- NUEVO FILTRO DE HORA PARA CASETAS -->
                 <div class="control-item" id="altSettingsBox3" style="display: none;">
                     <label>Casetas empiezan desde las:</label>
                     <input type="time" id="timeCasetasFilter" value="19:00">
@@ -206,7 +205,6 @@
     </div>
 
     <script>
-        // Inicialización
         window.onload = function() {
             renderSavedSchedules();
         };
@@ -219,7 +217,39 @@
             document.getElementById('altSettingsBox3').style.display = displayStyle;
         }
 
-        function processExcel() {
+        // Verificador matemático de duración
+        function verificarDuracion(showTimeVal, durationVal, endTimeVal) {
+            if (!showTimeVal || !durationVal || !endTimeVal) return true; 
+            
+            let showDate = new Date(showTimeVal);
+            let endDate = new Date(endTimeVal);
+            
+            if (isNaN(showDate.getTime()) || isNaN(endDate.getTime())) return true;
+            
+            let hours = 0, mins = 0, secs = 0;
+            
+            if (typeof durationVal === 'string') {
+                let parts = durationVal.split(':');
+                if (parts.length === 3) {
+                    hours = parseInt(parts[0], 10);
+                    mins = parseInt(parts[1], 10);
+                    secs = parseInt(parts[2], 10);
+                }
+            } else if (typeof durationVal === 'number') {
+                let totalSeconds = Math.round(durationVal * 24 * 3600);
+                hours = Math.floor(totalSeconds / 3600);
+                mins = Math.floor((totalSeconds % 3600) / 60);
+                secs = totalSeconds % 60;
+            }
+
+            let calculatedEnd = new Date(showDate.getTime() + (hours * 3600000) + (mins * 60000) + (secs * 1000));
+            let diffSecs = Math.abs((calculatedEnd.getTime() - endDate.getTime()) / 1000);
+            
+            return diffSecs <= 60; 
+        }
+
+        // NUEVO: Función principal convertida en asíncrona para soportar múltiples archivos
+        async function processExcel() {
             const input = document.getElementById('excelInput');
             const timeField = document.getElementById('timeField').value;
             const offsetMinutes = parseInt(document.getElementById('timeOffset').value) || 0;
@@ -227,18 +257,16 @@
             const statusDiv = document.getElementById('status');
 
             if (!input.files || input.files.length === 0) {
-                alert("Por favor selecciona tu archivo de Excel.");
+                alert("Por favor selecciona al menos un archivo.");
                 return;
             }
 
-            // Minutos para Filtro de Cierres General
             let minStartMinutes = 0;
             if (startTimeStr) {
                 let parts = startTimeStr.split(':');
                 minStartMinutes = parseInt(parts[0]) * 60 + parseInt(parts[1]);
             }
 
-            // Minutos para Filtro de Casetas
             const timeCasetasStr = document.getElementById('timeCasetasFilter').value;
             let minCasetasMinutes = 0;
             if (timeCasetasStr) {
@@ -247,121 +275,167 @@
             }
 
             statusDiv.style.color = '#0056b3';
-            statusDiv.innerText = "Procesando archivo Excel...";
+            statusDiv.innerText = `Leyendo ${input.files.length} archivo(s)...`;
             
-            const file = input.files[0];
-            const reader = new FileReader();
+            let erroresDuracion = 0;
+            const altStartRoom = parseInt(document.getElementById('altStartRoom').value) || 1;
 
-            reader.onload = function(e) {
-                try {
-                    const data = new Uint8Array(e.target.result);
-                    const workbook = XLSX.read(data, {type: 'array', cellDates: true});
-                    const sheetName = workbook.SheetNames[0];
-                    const worksheet = workbook.Sheets[sheetName];
-                    const json = XLSX.utils.sheet_to_json(worksheet);
-                    
-                    let rawData = [];
-                    const altStartRoom = parseInt(document.getElementById('altStartRoom').value) || 1;
-
-                    json.forEach(row => {
-                        let auditorium = row['AUDITORIUM'];
-                        let timeVal = row[timeField];
-
-                        if (auditorium && timeVal !== undefined && timeVal !== null) {
-                            let roomMatch = String(auditorium).match(/\d+/);
-                            let roomNum = roomMatch ? parseInt(roomMatch[0]) : null;
+            // Procesamos todos los archivos en paralelo
+            const readPromises = Array.from(input.files).map(file => {
+                return new Promise((resolve) => {
+                    const reader = new FileReader();
+                    reader.onload = function(e) {
+                        try {
+                            const data = new Uint8Array(e.target.result);
+                            const workbook = XLSX.read(data, {type: 'array', cellDates: true});
+                            const sheetName = workbook.SheetNames[0];
+                            const json = XLSX.utils.sheet_to_json(workbook.Sheets[sheetName]);
                             
-                            // Filtrar desde la sala de inicio elegida
-                            if (roomNum !== null && roomNum >= altStartRoom) {
-                                let timeObj = modifyTime(timeVal, offsetMinutes);
-                                if (timeObj) {
-                                    // Filtrar desde la hora de inicio general
-                                    if (timeObj.sortValue >= minStartMinutes) {
-                                        rawData.push({
-                                            displayTime: timeObj.display,
-                                            sortValue: timeObj.sortValue,
-                                            roomNum: roomNum
-                                        });
+                            let fileData = [];
+                            json.forEach(row => {
+                                let auditorium = row['AUDITORIUM'];
+                                let timeVal = row[timeField];
+
+                                let show = row['SHOW_TIME'] || row['SCHEDULED_TIME'];
+                                let end = row['END_TIME'];
+                                let duration = row['DURATION'];
+                                
+                                if (show && end && duration) {
+                                    if (!verificarDuracion(show, duration, end)) erroresDuracion++;
+                                }
+
+                                if (auditorium && timeVal !== undefined && timeVal !== null) {
+                                    let roomMatch = String(auditorium).match(/\d+/);
+                                    let roomNum = roomMatch ? parseInt(roomMatch[0]) : null;
+                                    
+                                    if (roomNum !== null && roomNum >= altStartRoom) {
+                                        let timeObj = modifyTime(timeVal, offsetMinutes);
+                                        if (timeObj && timeObj.sortValue >= minStartMinutes) {
+                                            fileData.push({
+                                                displayTime: timeObj.display,
+                                                sortValue: timeObj.sortValue,
+                                                roomNum: roomNum,
+                                                // Llave única para comparar y deduplicar
+                                                uniqueKey: `${roomNum}-${timeObj.sortValue}`
+                                            });
+                                        }
                                     }
                                 }
-                            }
+                            });
+                            resolve({ name: file.name, data: fileData, error: false });
+                        } catch (err) {
+                            console.error(`Error procesando ${file.name}:`, err);
+                            resolve({ name: file.name, error: true });
+                        }
+                    };
+                    reader.readAsArrayBuffer(file);
+                });
+            });
+
+            const results = await Promise.all(readPromises);
+
+            // NUEVO: Lógica de Comparación entre archivos
+            let diferenciasDetectadas = false;
+            if (results.length > 1) {
+                let baseKeys = new Set(results[0].data.map(d => d.uniqueKey));
+                for (let i = 1; i < results.length; i++) {
+                    let currentKeys = new Set(results[i].data.map(d => d.uniqueKey));
+                    if (baseKeys.size !== currentKeys.size) {
+                        diferenciasDetectadas = true;
+                        break;
+                    }
+                    for (let k of baseKeys) {
+                        if (!currentKeys.has(k)) {
+                            diferenciasDetectadas = true;
+                            break;
+                        }
+                    }
+                }
+            }
+
+            // NUEVO: Fusión de horarios y eliminación de duplicados exactos
+            let rawData = [];
+            let processedKeys = new Set();
+            results.forEach(res => {
+                if (!res.error) {
+                    res.data.forEach(d => {
+                        if (!processedKeys.has(d.uniqueKey)) {
+                            processedKeys.add(d.uniqueKey);
+                            rawData.push(d);
                         }
                     });
-
-                    if (rawData.length === 0) {
-                        statusDiv.style.color = '#d9534f';
-                        statusDiv.innerText = "No se encontraron funciones con esos filtros.";
-                        return;
-                    }
-
-                    // Ordenar cronológicamente
-                    rawData.sort((a, b) => a.sortValue - b.sortValue);
-
-                    // Lógica de Alternancia Salas/Casetas
-                    const altMode = document.getElementById('altMode').value;
-                    const altStartRole = document.getElementById('altStartRole').value;
-
-                    if (altMode === 'numeric') {
-                        rawData.forEach(d => {
-                            let forceSala = minCasetasMinutes > 0 && d.sortValue < minCasetasMinutes;
-                            
-                            let diff = d.roomNum - altStartRoom;
-                            let role = (diff % 2 === 0) ? altStartRole : (altStartRole === 'S' ? 'C' : 'S');
-                            
-                            // Si la función es antes de la hora de casetas, forzamos "S"
-                            if (forceSala) role = 'S';
-                            
-                            d.displayRoom = `${role}-${d.roomNum}`;
-                        });
-                    } else if (altMode === 'chrono') {
-                        let toggle = (altStartRole === 'S'); 
-                        let alternatingStarted = false;
-
-                        rawData.forEach(d => {
-                            let forceSala = minCasetasMinutes > 0 && d.sortValue < minCasetasMinutes;
-
-                            if (!alternatingStarted && d.roomNum === altStartRoom) {
-                                alternatingStarted = true;
-                            }
-                            if (alternatingStarted) {
-                                let role = toggle ? 'S' : 'C';
-                                
-                                if (forceSala) {
-                                    role = 'S';
-                                } else {
-                                    // Solo alternamos turno si NO fue forzado a Sala por el horario
-                                    toggle = !toggle; 
-                                }
-                                d.displayRoom = `${role}-${d.roomNum}`;
-                            } else {
-                                d.displayRoom = forceSala ? `S-${d.roomNum}` : d.roomNum.toString();
-                            }
-                        });
-                    } else {
-                        rawData.forEach(d => {
-                            d.displayRoom = d.roomNum.toString();
-                        });
-                    }
-
-                    // Dibujar tabla
-                    document.getElementById('tableBody').innerHTML = '';
-                    rawData.forEach(d => addRow(d.displayTime, d.displayRoom));
-
-                    statusDiv.style.color = '#28a745';
-                    statusDiv.innerText = `¡${rawData.length} funciones extraídas con éxito!`;
-                    document.getElementById('editorTitle').innerText = "Vista Previa (Nuevo Horario)";
-                    document.getElementById('editorSection').style.display = 'block';
-
-                } catch (error) {
-                    console.error(error);
-                    statusDiv.style.color = '#d9534f';
-                    statusDiv.innerText = "Hubo un error al leer el archivo Excel.";
                 }
-            };
-            reader.readAsArrayBuffer(file);
+            });
+
+            if (rawData.length === 0) {
+                statusDiv.style.color = '#d9534f';
+                statusDiv.innerText = "No se encontraron funciones en los archivos cargados.";
+                return;
+            }
+
+            rawData.sort((a, b) => a.sortValue - b.sortValue);
+
+            const altMode = document.getElementById('altMode').value;
+            const altStartRole = document.getElementById('altStartRole').value;
+
+            if (altMode === 'numeric') {
+                rawData.forEach(d => {
+                    let forceSala = minCasetasMinutes > 0 && d.sortValue < minCasetasMinutes;
+                    let diff = d.roomNum - altStartRoom;
+                    let role = (diff % 2 === 0) ? altStartRole : (altStartRole === 'S' ? 'C' : 'S');
+                    if (forceSala) role = 'S';
+                    d.displayRoom = `${role}-${d.roomNum}`;
+                });
+            } else if (altMode === 'chrono') {
+                let toggle = (altStartRole === 'S'); 
+                let alternatingStarted = false;
+
+                rawData.forEach(d => {
+                    let forceSala = minCasetasMinutes > 0 && d.sortValue < minCasetasMinutes;
+                    if (!alternatingStarted && d.roomNum === altStartRoom) {
+                        alternatingStarted = true;
+                    }
+                    if (alternatingStarted) {
+                        let role = toggle ? 'S' : 'C';
+                        if (forceSala) {
+                            role = 'S';
+                        } else {
+                            toggle = !toggle; 
+                        }
+                        d.displayRoom = `${role}-${d.roomNum}`;
+                    } else {
+                        d.displayRoom = forceSala ? `S-${d.roomNum}` : d.roomNum.toString();
+                    }
+                });
+            } else {
+                rawData.forEach(d => {
+                    d.displayRoom = d.roomNum.toString();
+                });
+            }
+
+            document.getElementById('tableBody').innerHTML = '';
+            rawData.forEach(d => addRow(d.displayTime, d.displayRoom));
+
+            // Actualización de estado informativo
+            let finalMsg = `¡${rawData.length} funciones consolidadas! `;
+            if (diferenciasDetectadas) {
+                statusDiv.style.color = '#ff851b';
+                finalMsg += "⚠️ IMPORTANTE: Se detectaron discrepancias entre los archivos, pero las funciones se combinaron sin duplicar salas.";
+            } else {
+                statusDiv.style.color = '#28a745';
+                finalMsg += (results.length > 1) ? "✅ Todos los archivos coinciden perfectamente." : "✅ Extraído con éxito.";
+            }
+
+            if (erroresDuracion > 0) {
+                statusDiv.style.color = '#d9534f';
+                finalMsg += ` (Alerta: ${erroresDuracion} discrepancias matemáticas de duración detectadas).`;
+            }
+
+            statusDiv.innerText = finalMsg;
+            document.getElementById('editorTitle').innerText = "Vista Previa (Nuevo Horario)";
+            document.getElementById('editorSection').style.display = 'block';
         }
 
-        // Motor de tiempo (Convierte, suma 1 min si seg > 25)
         function modifyTime(timeVal, offsetMinutes) {
             let hours = 0, minutes = 0, seconds = 0;
 
@@ -422,9 +496,6 @@
             tbody.appendChild(tr);
         }
 
-        // ==========================================
-        // BASE DE DATOS LOCAL (LOCALSTORAGE)
-        // ==========================================
         function getDBSchedules() {
             return JSON.parse(localStorage.getItem('cinepolis_schedules_local')) || [];
         }
@@ -457,7 +528,7 @@
             db.unshift(newRecord); 
             localStorage.setItem('cinepolis_schedules_local', JSON.stringify(db));
             
-            alert("Horario guardado en el historial local del navegador.");
+            alert("Horario guardado en el historial local.");
             renderSavedSchedules();
         }
 
@@ -466,7 +537,7 @@
             const list = document.getElementById('savedSchedulesList');
             
             if (db.length === 0) {
-                list.innerHTML = '<li>No hay horarios guardados en el navegador.</li>';
+                list.innerHTML = '<li>No hay horarios guardados.</li>';
                 return;
             }
 
@@ -505,7 +576,7 @@
         }
 
         function deleteSchedule(id) {
-            if(confirm("¿Estás seguro de eliminar este horario del historial local?")) {
+            if(confirm("¿Seguro que quieres eliminar esto de tu navegador?")) {
                 let db = getDBSchedules();
                 db = db.filter(r => r.id !== id);
                 localStorage.setItem('cinepolis_schedules_local', JSON.stringify(db));
@@ -513,22 +584,28 @@
             }
         }
 
-        // ==========================================
-        // IMPRESIÓN DEL PDF EXACTO (DOS COLUMNAS)
-        // ==========================================
         function generatePDF() {
             const times = document.querySelectorAll('.time-input');
             const rooms = document.querySelectorAll('.room-input');
             
             let validData = [];
+            let comprobacionSeguridad = new Set(); // NUEVO: Filtro final antes de imprimir
+
             for (let i = 0; i < times.length; i++) {
-                if (times[i].value.trim() !== "" && rooms[i].value.trim() !== "") {
-                    validData.push({ displayTime: times[i].value, roomStr: rooms[i].value });
+                let t = times[i].value.trim();
+                let r = rooms[i].value.trim();
+                if (t !== "" && r !== "") {
+                    let keyUnicaImpresion = `${r}-${t}`;
+                    // Solo lo agregamos si no existe ya esa Sala con esa exacta Hora
+                    if (!comprobacionSeguridad.has(keyUnicaImpresion)) {
+                        comprobacionSeguridad.add(keyUnicaImpresion);
+                        validData.push({ displayTime: t, roomStr: r });
+                    }
                 }
             }
 
             if(validData.length === 0) {
-                alert("No hay datos válidos para imprimir.");
+                alert("No hay datos para imprimir.");
                 return;
             }
 
