@@ -3,77 +3,21 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Módulo de Cierres - Sistema Operativo Local</title>
+    <title>Módulo de Cierres y Funciones - Local</title>
     
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 
     <style>
-        body {
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            background-color: #f4f7f6;
-            color: #333;
-            max-width: 950px;
-            margin: 0 auto;
-            padding: 20px;
-        }
-        .card {
-            background: #fff;
-            padding: 20px;
-            border-radius: 8px;
-            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
-            margin-bottom: 20px;
-        }
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #f4f7f6; color: #333; max-width: 1000px; margin: 0 auto; padding: 20px; }
+        .card { background: #fff; padding: 20px; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); margin-bottom: 20px; }
         h1, h2 { color: #0056b3; font-size: 22px; margin-top: 0; }
-        
-        .top-actions {
-            display: flex;
-            gap: 10px;
-            flex-wrap: wrap;
-            margin-bottom: 20px;
-            background: #e9ecef;
-            padding: 15px;
-            border-radius: 8px;
-            border: 1px solid #ced4da;
-        }
-
-        .control-group {
-            display: flex;
-            gap: 15px;
-            margin-bottom: 20px;
-            flex-wrap: wrap;
-            background: #f8f9fa;
-            padding: 15px;
-            border-radius: 6px;
-            border: 1px solid #ddd;
-        }
-        .control-item {
-            display: flex;
-            flex-direction: column;
-            flex: 1;
-            min-width: 170px;
-        }
+        .top-actions { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 20px; background: #e9ecef; padding: 15px; border-radius: 8px; border: 1px solid #ced4da; }
+        .control-group { display: flex; gap: 15px; margin-bottom: 20px; flex-wrap: wrap; background: #f8f9fa; padding: 15px; border-radius: 6px; border: 1px solid #ddd; }
+        .control-item { display: flex; flex-direction: column; flex: 1; min-width: 170px; }
         label { font-weight: bold; margin-bottom: 5px; font-size: 13px; }
-        input, select {
-            padding: 8px;
-            border: 1px solid #ccc;
-            border-radius: 4px;
-            font-size: 14px;
-            background: #fff;
-        }
-        button {
-            background-color: #0056b3;
-            color: white;
-            border: none;
-            padding: 10px 15px;
-            border-radius: 5px;
-            cursor: pointer;
-            font-size: 15px;
-            font-weight: bold;
-            transition: 0.2s;
-            flex: 1;
-            min-width: 150px;
-        }
+        input, select { padding: 8px; border: 1px solid #ccc; border-radius: 4px; font-size: 14px; background: #fff; }
+        button { background-color: #0056b3; color: white; border: none; padding: 10px 15px; border-radius: 5px; cursor: pointer; font-size: 15px; font-weight: bold; transition: 0.2s; flex: 1; min-width: 150px; }
         button:hover { background-color: #004494; }
         .btn-success { background-color: #28a745; }
         .btn-success:hover { background-color: #218838; }
@@ -81,20 +25,12 @@
         .btn-warning:hover { background-color: #e0a800; }
         .btn-danger { background-color: #dc3545; }
         .btn-danger:hover { background-color: #c82333; }
-        
-        #status { margin-bottom: 15px; font-weight: bold; text-align: center; font-size: 15px; }
+        #status { margin-bottom: 15px; font-weight: bold; color: #d9534f; text-align: center; }
         table { width: 100%; border-collapse: collapse; margin-top: 15px; }
         th, td { border: 1px solid #ddd; padding: 6px; text-align: center; }
         th { background-color: #e9ecef; }
         input.edit-input { width: 100%; border: none; background: transparent; font-size: 14px; text-align: center; }
-        
-        .alt-box {
-            background: #eef2f5;
-            border: 1px solid #c8d4dd;
-            padding: 15px;
-            border-radius: 6px;
-            margin-top: 10px;
-        }
+        .alt-box { background: #eef2f5; border: 1px solid #c8d4dd; padding: 15px; border-radius: 6px; margin-top: 10px; }
         .db-list { list-style: none; padding: 0; }
         .db-item { background: #f8f9fa; border: 1px solid #ddd; padding: 10px 15px; margin-bottom: 8px; border-radius: 5px; display: flex; justify-content: space-between; align-items: center; }
     </style>
@@ -102,12 +38,12 @@
 <body>
 
     <div class="card">
-        <h1>Control Operativo (Salas y Casetas)</h1>
+        <h1>Control Operativo (Películas, Ingresos y Cierres)</h1>
         
-        <!-- BOTONES DE ACCIÓN PRINCIPALES ARRIBA -->
+        <!-- BOTONES DE ACCIÓN PRINCIPALES -->
         <div class="top-actions">
             <button onclick="processExcel()">1. Extraer Horarios</button>
-            <button onclick="addRow('', '')">+ Fila Manual</button>
+            <button onclick="addRow('', '', '', '')">+ Fila Manual</button>
             <button onclick="saveScheduleToDB()" class="btn-warning">Guardar en Historial</button>
             <button onclick="generatePDF()" class="btn-success">Imprimir Formato PDF</button>
         </div>
@@ -117,28 +53,27 @@
         <!-- CONFIGURACIÓN DEL ARCHIVO -->
         <div class="control-group">
             <div class="control-item" style="flex: 100%;">
-                <label>Cargar Archivos (Puedes seleccionar Excel, CSV y TSV al mismo tiempo)</label>
-                <!-- NUEVO: Etiqueta "multiple" añadida -->
-                <input type="file" id="excelInput" accept=".xlsx, .xls, .csv, .tsv" multiple>
+                <label>Cargar Archivo Excel del Sistema</label>
+                <input type="file" id="excelInput" accept=".xlsx, .xls, .csv">
             </div>
             <div class="control-item">
                 <label>Título del día</label>
                 <input type="text" id="dayTitle" value="MARTES :)" placeholder="Ej. MARTES :)">
             </div>
             <div class="control-item">
-                <label>Tomar horario de:</label>
+                <label>Tomar hora de Salida de:</label>
                 <select id="timeField">
+                    <option value="END_TIME">Fin de Función (Recomendado)</option>
                     <option value="CREDITS_TIME">Inicio de Créditos</option>
-                    <option value="END_TIME">Fin de Función</option>
                 </select>
             </div>
             <div class="control-item">
-                <label>Hora de inicio de cierres (24h):</label>
-                <input type="time" id="startTimeFilter" value="15:30">
-                <small style="font-size: 11px; color: #666;">Ignora funciones previas a esta hora.</small>
+                <label>Filtro: Funciones desde (24h):</label>
+                <input type="time" id="startTimeFilter" value="">
+                <small style="font-size: 11px; color: #666;">Dejar en blanco para todo el día.</small>
             </div>
             <div class="control-item">
-                <label>Ajuste tiempo (Min)</label>
+                <label>Ajuste tiempo Salida (Min)</label>
                 <input type="number" id="timeOffset" value="0" placeholder="Ej. 10">
             </div>
         </div>
@@ -157,13 +92,12 @@
                 </div>
                 
                 <div class="control-item" id="altSettingsBox1" style="display: none;">
-                    <label>Alternar a partir de la Sala:</label>
+                    <label>Empezar con la Sala:</label>
                     <input type="number" id="altStartRoom" value="1" min="1">
-                    <small style="font-size: 11px; color: #666;">Filtrar / Empezar en esta sala.</small>
                 </div>
                 
                 <div class="control-item" id="altSettingsBox2" style="display: none;">
-                    <label>Rol inicial:</label>
+                    <label>Esa sala inicial será:</label>
                     <select id="altStartRole">
                         <option value="S">Sala (S)</option>
                         <option value="C">Caseta (C)</option>
@@ -173,7 +107,7 @@
                 <div class="control-item" id="altSettingsBox3" style="display: none;">
                     <label>Casetas empiezan desde las:</label>
                     <input type="time" id="timeCasetasFilter" value="19:00">
-                    <small style="font-size: 11px; color: #666;">Antes de esta hora, todo será Sala (S).</small>
+                    <small style="font-size: 11px; color: #666;">Antes de esto, se forzará como (S).</small>
                 </div>
             </div>
         </div>
@@ -186,7 +120,9 @@
         <table id="dataTable">
             <thead>
                 <tr>
-                    <th>Hora (Espacio amplio para Nombre)</th>
+                    <th>Película</th>
+                    <th>Ingreso</th>
+                    <th>Salida (Cierre)</th>
                     <th>Sala / Caseta</th>
                     <th>Acción</th>
                 </tr>
@@ -217,47 +153,22 @@
             document.getElementById('altSettingsBox3').style.display = displayStyle;
         }
 
-        // Verificador matemático de duración
-        function verificarDuracion(showTimeVal, durationVal, endTimeVal) {
-            if (!showTimeVal || !durationVal || !endTimeVal) return true; 
-            
-            let showDate = new Date(showTimeVal);
-            let endDate = new Date(endTimeVal);
-            
-            if (isNaN(showDate.getTime()) || isNaN(endDate.getTime())) return true;
-            
-            let hours = 0, mins = 0, secs = 0;
-            
-            if (typeof durationVal === 'string') {
-                let parts = durationVal.split(':');
-                if (parts.length === 3) {
-                    hours = parseInt(parts[0], 10);
-                    mins = parseInt(parts[1], 10);
-                    secs = parseInt(parts[2], 10);
-                }
-            } else if (typeof durationVal === 'number') {
-                let totalSeconds = Math.round(durationVal * 24 * 3600);
-                hours = Math.floor(totalSeconds / 3600);
-                mins = Math.floor((totalSeconds % 3600) / 60);
-                secs = totalSeconds % 60;
-            }
-
-            let calculatedEnd = new Date(showDate.getTime() + (hours * 3600000) + (mins * 60000) + (secs * 1000));
-            let diffSecs = Math.abs((calculatedEnd.getTime() - endDate.getTime()) / 1000);
-            
-            return diffSecs <= 60; 
+        // Limpiar el nombre de la película (Ej. COYOTEVSACME_FTR... -> Coyotevsacme)
+        function cleanMovieName(rawName) {
+            if (!rawName) return "Desconocida";
+            let clean = rawName.split('_')[0];
+            return clean.charAt(0).toUpperCase() + clean.slice(1).toLowerCase();
         }
 
-        // NUEVO: Función principal convertida en asíncrona para soportar múltiples archivos
-        async function processExcel() {
+        function processExcel() {
             const input = document.getElementById('excelInput');
-            const timeField = document.getElementById('timeField').value;
+            const timeField = document.getElementById('timeField').value; // END_TIME
             const offsetMinutes = parseInt(document.getElementById('timeOffset').value) || 0;
             const startTimeStr = document.getElementById('startTimeFilter').value;
             const statusDiv = document.getElementById('status');
 
             if (!input.files || input.files.length === 0) {
-                alert("Por favor selecciona al menos un archivo.");
+                alert("Por favor selecciona tu archivo de Excel.");
                 return;
             }
 
@@ -275,168 +186,116 @@
             }
 
             statusDiv.style.color = '#0056b3';
-            statusDiv.innerText = `Leyendo ${input.files.length} archivo(s)...`;
+            statusDiv.innerText = "Procesando archivo Excel...";
             
-            let erroresDuracion = 0;
-            const altStartRoom = parseInt(document.getElementById('altStartRoom').value) || 1;
+            const file = input.files[0];
+            const reader = new FileReader();
 
-            // Procesamos todos los archivos en paralelo
-            const readPromises = Array.from(input.files).map(file => {
-                return new Promise((resolve) => {
-                    const reader = new FileReader();
-                    reader.onload = function(e) {
-                        try {
-                            const data = new Uint8Array(e.target.result);
-                            const workbook = XLSX.read(data, {type: 'array', cellDates: true});
-                            const sheetName = workbook.SheetNames[0];
-                            const json = XLSX.utils.sheet_to_json(workbook.Sheets[sheetName]);
+            reader.onload = function(e) {
+                try {
+                    const data = new Uint8Array(e.target.result);
+                    const workbook = XLSX.read(data, {type: 'array', cellDates: true});
+                    const sheetName = workbook.SheetNames[0];
+                    const worksheet = workbook.Sheets[sheetName];
+                    const json = XLSX.utils.sheet_to_json(worksheet);
+                    
+                    let rawData = [];
+                    const altStartRoom = parseInt(document.getElementById('altStartRoom').value) || 1;
+
+                    json.forEach(row => {
+                        let auditorium = row['AUDITORIUM'];
+                        let exitTimeVal = row[timeField]; 
+                        let entryTimeVal = row['SHOW_TIME'] || row['SCHEDULED_TIME']; 
+                        let featureVal = row['FEATURE'] || row['Pelicula'] || 'Función';
+
+                        if (auditorium && exitTimeVal !== undefined && entryTimeVal !== undefined) {
+                            let roomMatch = String(auditorium).match(/\d+/);
+                            let roomNum = roomMatch ? parseInt(roomMatch[0]) : null;
                             
-                            let fileData = [];
-                            json.forEach(row => {
-                                let auditorium = row['AUDITORIUM'];
-                                let timeVal = row[timeField];
-
-                                let show = row['SHOW_TIME'] || row['SCHEDULED_TIME'];
-                                let end = row['END_TIME'];
-                                let duration = row['DURATION'];
+                            if (roomNum !== null && roomNum >= altStartRoom) {
+                                // Procesar Salida (Aplica offset y regla de >25s)
+                                let exitTimeObj = modifyTime(exitTimeVal, offsetMinutes, true);
+                                // Procesar Ingreso (Hora exacta, sin offset)
+                                let entryTimeObj = modifyTime(entryTimeVal, 0, false);
                                 
-                                if (show && end && duration) {
-                                    if (!verificarDuracion(show, duration, end)) erroresDuracion++;
-                                }
-
-                                if (auditorium && timeVal !== undefined && timeVal !== null) {
-                                    let roomMatch = String(auditorium).match(/\d+/);
-                                    let roomNum = roomMatch ? parseInt(roomMatch[0]) : null;
-                                    
-                                    if (roomNum !== null && roomNum >= altStartRoom) {
-                                        let timeObj = modifyTime(timeVal, offsetMinutes);
-                                        if (timeObj && timeObj.sortValue >= minStartMinutes) {
-                                            fileData.push({
-                                                displayTime: timeObj.display,
-                                                sortValue: timeObj.sortValue,
-                                                roomNum: roomNum,
-                                                // Llave única para comparar y deduplicar
-                                                uniqueKey: `${roomNum}-${timeObj.sortValue}`
-                                            });
-                                        }
+                                if (exitTimeObj && entryTimeObj) {
+                                    if (exitTimeObj.sortValue >= minStartMinutes) {
+                                        rawData.push({
+                                            movieName: cleanMovieName(featureVal),
+                                            entryTime: entryTimeObj.display,
+                                            exitTime: exitTimeObj.display,
+                                            sortValue: exitTimeObj.sortValue,
+                                            roomNum: roomNum
+                                        });
                                     }
                                 }
-                            });
-                            resolve({ name: file.name, data: fileData, error: false });
-                        } catch (err) {
-                            console.error(`Error procesando ${file.name}:`, err);
-                            resolve({ name: file.name, error: true });
-                        }
-                    };
-                    reader.readAsArrayBuffer(file);
-                });
-            });
-
-            const results = await Promise.all(readPromises);
-
-            // NUEVO: Lógica de Comparación entre archivos
-            let diferenciasDetectadas = false;
-            if (results.length > 1) {
-                let baseKeys = new Set(results[0].data.map(d => d.uniqueKey));
-                for (let i = 1; i < results.length; i++) {
-                    let currentKeys = new Set(results[i].data.map(d => d.uniqueKey));
-                    if (baseKeys.size !== currentKeys.size) {
-                        diferenciasDetectadas = true;
-                        break;
-                    }
-                    for (let k of baseKeys) {
-                        if (!currentKeys.has(k)) {
-                            diferenciasDetectadas = true;
-                            break;
-                        }
-                    }
-                }
-            }
-
-            // NUEVO: Fusión de horarios y eliminación de duplicados exactos
-            let rawData = [];
-            let processedKeys = new Set();
-            results.forEach(res => {
-                if (!res.error) {
-                    res.data.forEach(d => {
-                        if (!processedKeys.has(d.uniqueKey)) {
-                            processedKeys.add(d.uniqueKey);
-                            rawData.push(d);
+                            }
                         }
                     });
-                }
-            });
 
-            if (rawData.length === 0) {
-                statusDiv.style.color = '#d9534f';
-                statusDiv.innerText = "No se encontraron funciones en los archivos cargados.";
-                return;
-            }
-
-            rawData.sort((a, b) => a.sortValue - b.sortValue);
-
-            const altMode = document.getElementById('altMode').value;
-            const altStartRole = document.getElementById('altStartRole').value;
-
-            if (altMode === 'numeric') {
-                rawData.forEach(d => {
-                    let forceSala = minCasetasMinutes > 0 && d.sortValue < minCasetasMinutes;
-                    let diff = d.roomNum - altStartRoom;
-                    let role = (diff % 2 === 0) ? altStartRole : (altStartRole === 'S' ? 'C' : 'S');
-                    if (forceSala) role = 'S';
-                    d.displayRoom = `${role}-${d.roomNum}`;
-                });
-            } else if (altMode === 'chrono') {
-                let toggle = (altStartRole === 'S'); 
-                let alternatingStarted = false;
-
-                rawData.forEach(d => {
-                    let forceSala = minCasetasMinutes > 0 && d.sortValue < minCasetasMinutes;
-                    if (!alternatingStarted && d.roomNum === altStartRoom) {
-                        alternatingStarted = true;
+                    if (rawData.length === 0) {
+                        statusDiv.style.color = '#d9534f';
+                        statusDiv.innerText = "No se encontraron funciones. Revisa el archivo y los filtros.";
+                        return;
                     }
-                    if (alternatingStarted) {
-                        let role = toggle ? 'S' : 'C';
-                        if (forceSala) {
-                            role = 'S';
-                        } else {
-                            toggle = !toggle; 
-                        }
-                        d.displayRoom = `${role}-${d.roomNum}`;
+
+                    // Ordenar por hora de Salida (Cierre)
+                    rawData.sort((a, b) => a.sortValue - b.sortValue);
+
+                    // Lógica de Alternancia Salas/Casetas
+                    const altMode = document.getElementById('altMode').value;
+                    const altStartRole = document.getElementById('altStartRole').value;
+
+                    if (altMode === 'numeric') {
+                        rawData.forEach(d => {
+                            let forceSala = minCasetasMinutes > 0 && d.sortValue < minCasetasMinutes;
+                            let diff = d.roomNum - altStartRoom;
+                            let role = (diff % 2 === 0) ? altStartRole : (altStartRole === 'S' ? 'C' : 'S');
+                            if (forceSala) role = 'S';
+                            d.displayRoom = `${role}-${d.roomNum}`;
+                        });
+                    } else if (altMode === 'chrono') {
+                        let toggle = (altStartRole === 'S'); 
+                        let alternatingStarted = false;
+
+                        rawData.forEach(d => {
+                            let forceSala = minCasetasMinutes > 0 && d.sortValue < minCasetasMinutes;
+                            if (!alternatingStarted && d.roomNum === altStartRoom) alternatingStarted = true;
+                            
+                            if (alternatingStarted) {
+                                let role = toggle ? 'S' : 'C';
+                                if (forceSala) {
+                                    role = 'S';
+                                } else {
+                                    toggle = !toggle; 
+                                }
+                                d.displayRoom = `${role}-${d.roomNum}`;
+                            } else {
+                                d.displayRoom = forceSala ? `S-${d.roomNum}` : d.roomNum.toString();
+                            }
+                        });
                     } else {
-                        d.displayRoom = forceSala ? `S-${d.roomNum}` : d.roomNum.toString();
+                        rawData.forEach(d => d.displayRoom = d.roomNum.toString());
                     }
-                });
-            } else {
-                rawData.forEach(d => {
-                    d.displayRoom = d.roomNum.toString();
-                });
-            }
 
-            document.getElementById('tableBody').innerHTML = '';
-            rawData.forEach(d => addRow(d.displayTime, d.displayRoom));
+                    document.getElementById('tableBody').innerHTML = '';
+                    rawData.forEach(d => addRow(d.movieName, d.entryTime, d.exitTime, d.displayRoom));
 
-            // Actualización de estado informativo
-            let finalMsg = `¡${rawData.length} funciones consolidadas! `;
-            if (diferenciasDetectadas) {
-                statusDiv.style.color = '#ff851b';
-                finalMsg += "⚠️ IMPORTANTE: Se detectaron discrepancias entre los archivos, pero las funciones se combinaron sin duplicar salas.";
-            } else {
-                statusDiv.style.color = '#28a745';
-                finalMsg += (results.length > 1) ? "✅ Todos los archivos coinciden perfectamente." : "✅ Extraído con éxito.";
-            }
+                    statusDiv.style.color = '#28a745';
+                    statusDiv.innerText = `¡${rawData.length} funciones extraídas con éxito!`;
+                    document.getElementById('editorSection').style.display = 'block';
 
-            if (erroresDuracion > 0) {
-                statusDiv.style.color = '#d9534f';
-                finalMsg += ` (Alerta: ${erroresDuracion} discrepancias matemáticas de duración detectadas).`;
-            }
-
-            statusDiv.innerText = finalMsg;
-            document.getElementById('editorTitle').innerText = "Vista Previa (Nuevo Horario)";
-            document.getElementById('editorSection').style.display = 'block';
+                } catch (error) {
+                    console.error(error);
+                    statusDiv.style.color = '#d9534f';
+                    statusDiv.innerText = "Hubo un error al leer el archivo Excel.";
+                }
+            };
+            reader.readAsArrayBuffer(file);
         }
 
-        function modifyTime(timeVal, offsetMinutes) {
+        // applyRounding: Si es true, suma 1 min si los segundos pasan de 25
+        function modifyTime(timeVal, offsetMinutes, applyRounding) {
             let hours = 0, minutes = 0, seconds = 0;
 
             if (timeVal instanceof Date && !isNaN(timeVal.getTime())) {
@@ -464,7 +323,7 @@
                 }
             }
 
-            if (seconds > 25) minutes += 1;
+            if (applyRounding && seconds > 25) minutes += 1;
 
             let totalMinutes = (hours * 60) + minutes + offsetMinutes;
             hours = Math.floor(totalMinutes / 60) % 24;
@@ -485,37 +344,46 @@
             };
         }
 
-        function addRow(time, roomStr) {
+        function addRow(movie, entry, exit, roomStr) {
             const tbody = document.getElementById('tableBody');
             const tr = document.createElement('tr');
             tr.innerHTML = `
-                <td><input type="text" class="edit-input time-input" value="${time}"></td>
+                <td><input type="text" class="edit-input movie-input" value="${movie}"></td>
+                <td><input type="text" class="edit-input entry-input" value="${entry}"></td>
+                <td><input type="text" class="edit-input exit-input" value="${exit}"></td>
                 <td><input type="text" class="edit-input room-input" value="${roomStr}"></td>
                 <td><button onclick="this.parentElement.parentElement.remove()" class="btn-danger" style="padding: 5px 10px;">X</button></td>
             `;
             tbody.appendChild(tr);
         }
 
+        // ==========================================
+        // BASE DE DATOS LOCAL
+        // ==========================================
         function getDBSchedules() {
-            return JSON.parse(localStorage.getItem('cinepolis_schedules_local')) || [];
+            return JSON.parse(localStorage.getItem('cinepolis_schedules_full')) || [];
         }
 
         function saveScheduleToDB() {
             const title = document.getElementById('dayTitle').value || 'Sin Título';
-            const times = document.querySelectorAll('.time-input');
+            const movies = document.querySelectorAll('.movie-input');
+            const entries = document.querySelectorAll('.entry-input');
+            const exits = document.querySelectorAll('.exit-input');
             const rooms = document.querySelectorAll('.room-input');
             
             let currentData = [];
-            for (let i = 0; i < times.length; i++) {
-                if (times[i].value.trim() !== "" && rooms[i].value.trim() !== "") {
-                    currentData.push({ displayTime: times[i].value, roomStr: rooms[i].value });
+            for (let i = 0; i < movies.length; i++) {
+                if (exits[i].value.trim() !== "" && rooms[i].value.trim() !== "") {
+                    currentData.push({
+                        movie: movies[i].value,
+                        entry: entries[i].value,
+                        exit: exits[i].value,
+                        room: rooms[i].value 
+                    });
                 }
             }
 
-            if(currentData.length === 0) {
-                alert("La tabla está vacía. No hay nada que guardar.");
-                return;
-            }
+            if(currentData.length === 0) return alert("La tabla está vacía.");
 
             const newRecord = {
                 id: Date.now(),
@@ -526,7 +394,7 @@
 
             let db = getDBSchedules();
             db.unshift(newRecord); 
-            localStorage.setItem('cinepolis_schedules_local', JSON.stringify(db));
+            localStorage.setItem('cinepolis_schedules_full', JSON.stringify(db));
             
             alert("Horario guardado en el historial local.");
             renderSavedSchedules();
@@ -567,79 +435,73 @@
                 document.getElementById('dayTitle').value = record.title;
                 document.getElementById('tableBody').innerHTML = '';
                 
-                record.data.forEach(d => addRow(d.displayTime, d.roomStr));
+                record.data.forEach(d => addRow(d.movie, d.entry, d.exit, d.room));
                 
-                document.getElementById('editorTitle').innerText = "Vista Previa (Editando Horario Guardado)";
                 document.getElementById('editorSection').style.display = 'block';
                 window.scrollTo({ top: document.getElementById('editorSection').offsetTop, behavior: 'smooth' });
             }
         }
 
         function deleteSchedule(id) {
-            if(confirm("¿Seguro que quieres eliminar esto de tu navegador?")) {
+            if(confirm("¿Borrar este horario del historial?")) {
                 let db = getDBSchedules();
                 db = db.filter(r => r.id !== id);
-                localStorage.setItem('cinepolis_schedules_local', JSON.stringify(db));
+                localStorage.setItem('cinepolis_schedules_full', JSON.stringify(db));
                 renderSavedSchedules();
             }
         }
 
+        // ==========================================
+        // IMPRESIÓN DEL PDF EXACTO (DISEÑO 4 COLUMNAS)
+        // ==========================================
         function generatePDF() {
-            const times = document.querySelectorAll('.time-input');
+            const movies = document.querySelectorAll('.movie-input');
+            const entries = document.querySelectorAll('.entry-input');
+            const exits = document.querySelectorAll('.exit-input');
             const rooms = document.querySelectorAll('.room-input');
             
             let validData = [];
-            let comprobacionSeguridad = new Set(); // NUEVO: Filtro final antes de imprimir
-
-            for (let i = 0; i < times.length; i++) {
-                let t = times[i].value.trim();
-                let r = rooms[i].value.trim();
-                if (t !== "" && r !== "") {
-                    let keyUnicaImpresion = `${r}-${t}`;
-                    // Solo lo agregamos si no existe ya esa Sala con esa exacta Hora
-                    if (!comprobacionSeguridad.has(keyUnicaImpresion)) {
-                        comprobacionSeguridad.add(keyUnicaImpresion);
-                        validData.push({ displayTime: t, roomStr: r });
-                    }
+            for (let i = 0; i < movies.length; i++) {
+                if (exits[i].value.trim() !== "" && rooms[i].value.trim() !== "") {
+                    validData.push({ 
+                        movie: movies[i].value.trim(), 
+                        entry: entries[i].value.trim(), 
+                        exit: exits[i].value.trim(), 
+                        room: rooms[i].value.trim() 
+                    });
                 }
             }
 
-            if(validData.length === 0) {
-                alert("No hay datos para imprimir.");
-                return;
-            }
+            if(validData.length === 0) return alert("No hay datos válidos para imprimir.");
 
             const { jsPDF } = window.jspdf;
             const doc = new jsPDF({ orientation: 'l', unit: 'mm', format: 'letter' });
             const title = document.getElementById('dayTitle').value || 'MARTES :)';
             
-            const col1W = 35; 
-            const col2W = 16; 
-            const subW = col1W + col2W; 
-            const gap = 3; 
-            const totalW = subW + gap + subW; 
+            // Medidas de columnas para que quepa la Película y los horarios
+            const colEntryW = 15;
+            const colExitW = 15;
+            const colMovieW = 45;
+            const colRoomW = 15;
+            const totalW = colEntryW + colExitW + colMovieW + colRoomW; // 90mm
 
             function drawBlock(startX, blockData) {
-                let maxRows = Math.ceil(blockData.length / 2);
+                let maxRows = blockData.length;
                 if (maxRows < 15) maxRows = 15; 
                 
                 let rowHeight = 5.5; 
-                let fontSize = 10;
+                let fontSize = 9;
                 
+                // Auto-ajuste si hay muchas funciones
                 if (maxRows > 32) {
                     rowHeight = 180 / maxRows; 
-                    if(rowHeight < 4.5) fontSize = 8; 
-                }
-
-                const subCol1 = [];
-                const subCol2 = [];
-                for(let i=0; i < maxRows; i++) {
-                    subCol1.push(blockData[i] || {displayTime: '', roomStr: ''});
-                    subCol2.push(blockData[i + maxRows] || {displayTime: '', roomStr: ''});
+                    if(rowHeight < 4) fontSize = 7; 
+                    else if (rowHeight < 5) fontSize = 8;
                 }
 
                 const currentY = 12;
 
+                // Encabezado Trapecio
                 doc.setLineWidth(0.4);
                 doc.line(startX + 8, currentY, startX + totalW - 8, currentY); 
                 doc.line(startX, currentY + 6, startX + totalW, currentY + 6); 
@@ -652,47 +514,65 @@
 
                 const startY = currentY + 8; 
 
-                function drawSubCol(x, items) {
-                    doc.setLineWidth(0.2); 
+                // Títulos de las columnas
+                doc.setFont("helvetica", "bold");
+                doc.setFontSize(8);
+                doc.text("INGRESO", startX + 1.5, startY - 1);
+                doc.text("SALIDA", startX + colEntryW + 2, startY - 1);
+                doc.text("PELÍCULA", startX + colEntryW + colExitW + 2, startY - 1);
+                doc.text("SALA", startX + colEntryW + colExitW + colMovieW + 3, startY - 1);
+
+                doc.setLineWidth(0.2); 
+                
+                for (let i = 0; i < maxRows; i++) {
+                    let y = startY + (i * rowHeight);
                     
-                    for (let i = 0; i < items.length; i++) {
-                        let y = startY + (i * rowHeight);
-                        doc.rect(x, y, col1W, rowHeight);
-                        doc.rect(x + col1W, y, col2W, rowHeight);
+                    // Celdas
+                    doc.rect(startX, y, colEntryW, rowHeight);
+                    doc.rect(startX + colEntryW, y, colExitW, rowHeight);
+                    doc.rect(startX + colEntryW + colExitW, y, colMovieW, rowHeight);
+                    doc.rect(startX + colEntryW + colExitW + colMovieW, y, colRoomW, rowHeight);
 
-                        if (items[i].displayTime !== '') {
-                            doc.setFont("helvetica", "normal");
-                            doc.setFontSize(fontSize);
-                            doc.text(items[i].displayTime, x + 2, y + (rowHeight * 0.75));
-                            
-                            doc.setFont("helvetica", "bold");
-                            doc.text(items[i].roomStr.toString(), x + col1W + (col2W / 2), y + (rowHeight * 0.75), { align: "center" });
-                        }
+                    if (i < blockData.length) {
+                        let item = blockData[i];
+                        doc.setFont("helvetica", "normal");
+                        doc.setFontSize(fontSize);
+                        
+                        // Textos alineados
+                        doc.text(item.entry, startX + 1.5, y + (rowHeight * 0.75));
+                        doc.text(item.exit, startX + colEntryW + 1.5, y + (rowHeight * 0.75));
+                        
+                        // Recortar nombre de película si es muy largo
+                        let mName = item.movie;
+                        if(mName.length > 22) mName = mName.substring(0, 20) + "...";
+                        doc.text(mName, startX + colEntryW + colExitW + 2, y + (rowHeight * 0.75));
+                        
+                        doc.setFont("helvetica", "bold");
+                        doc.text(item.room.toString(), startX + colEntryW + colExitW + colMovieW + (colRoomW / 2), y + (rowHeight * 0.75), { align: "center" });
                     }
-
-                    const h = items.length * rowHeight;
-                    const corner = 3.5; 
-
-                    doc.setLineWidth(0.8); 
-                    doc.line(x, startY, x + subW, startY); 
-                    doc.line(x, startY, x, startY + h); 
-                    doc.line(x, startY + h, x + subW - corner, startY + h); 
-                    doc.line(x + subW, startY, x + subW, startY + h - corner); 
-                    doc.line(x + subW - corner, startY + h, x + subW, startY + h - corner);
-
-                    doc.setLineWidth(0.2);
-                    doc.line(x + subW - corner, startY + h, x + subW - corner, startY + h - corner);
-                    doc.line(x + subW - corner, startY + h - corner, x + subW, startY + h - corner);
                 }
 
-                drawSubCol(startX, subCol1);
-                drawSubCol(startX + subW + gap, subCol2);
+                // Borde y Doblez
+                const h = maxRows * rowHeight;
+                const corner = 3.5; 
+
+                doc.setLineWidth(0.8); 
+                doc.line(startX, startY, startX + totalW, startY); 
+                doc.line(startX, startY, startX, startY + h); 
+                doc.line(startX, startY + h, startX + totalW - corner, startY + h); 
+                doc.line(startX + totalW, startY, startX + totalW, startY + h - corner); 
+                doc.line(startX + totalW - corner, startY + h, startX + totalW, startY + h - corner);
+
+                doc.setLineWidth(0.2);
+                doc.line(startX + totalW - corner, startY + h, startX + totalW - corner, startY + h - corner);
+                doc.line(startX + totalW - corner, startY + h - corner, startX + totalW, startY + h - corner);
             }
 
-            drawBlock(20, validData);  
-            drawBlock(155, validData); 
+            // Dibuja las dos copias idénticas centradas en la hoja
+            drawBlock(25, validData);  
+            drawBlock(160, validData); 
 
-            doc.save("horarios_operativos_local.pdf");
+            doc.save("horarios_funciones_cierres.pdf");
         }
     </script>
 </body>
