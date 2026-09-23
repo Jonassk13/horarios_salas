@@ -59,7 +59,7 @@
                 <input type="file" id="pdfInput" accept=".pdf">
             </div>
             <div class="control-item" style="flex: 100%;">
-                <label>2. Cargar Archivos Excel/CSV/TSV (Para extraer duración. ¡Puedes subir los 3 a la vez!)</label>
+                <label>2. Cargar Archivos Excel/CSV/TSV (Para extraer duración)</label>
                 <input type="file" id="excelInput" accept=".xlsx, .xls, .csv, .tsv" multiple>
             </div>
             
@@ -161,21 +161,19 @@
             return clean.replace(/[^a-zA-Z0-9]/g, '').toLowerCase();
         }
 
-        // BÚSQUEDA INTELIGENTE
+        // BÚSQUEDA INTELIGENTE DE DURACIÓN
         function findDuration(pdfClean, movieDurations) {
             let keys = Object.keys(movieDurations);
-            // 1. Coincidencia directa o interna
             for (let k of keys) {
                 if (pdfClean.includes(k) || k.includes(pdfClean)) return movieDurations[k];
             }
-            // 2. Coincidencia parcial (Primeras 5 letras)
             let pdfStart = pdfClean.substring(0, 5);
             if (pdfStart.length >= 4) {
                 for (let k of keys) {
                     if (k.startsWith(pdfStart)) return movieDurations[k];
                 }
             }
-            return null; // Si no hay match
+            return null; 
         }
 
         async function processFiles() {
@@ -196,7 +194,7 @@
 
             try {
                 // PASO 1: LEER EXCEL Y CREAR DICCIONARIO DE DURACIONES
-                let movieDurations = {}; // Guardará los minutos que dura cada película
+                let movieDurations = {}; 
 
                 for (let i = 0; i < excelInput.files.length; i++) {
                     const file = excelInput.files[i];
@@ -215,7 +213,7 @@
                             let ct = getMinutesFromExcel(creditsTime);
                             if (st !== null && ct !== null) {
                                 let duration = ct - st;
-                                if (duration < 0) duration += 24 * 60; // Por si cruza la medianoche
+                                if (duration < 0) duration += 24 * 60; 
                                 let key = cleanExcelName(feature);
                                 movieDurations[key] = duration;
                             }
@@ -236,12 +234,10 @@
                 }
 
                 // PASO 3: EXTRACCIÓN CON EXPRESIONES REGULARES
-                // Busca 4 horas seguidas, un texto (título), un rating opcional, y la SALA
                 const regex = /((?:\d{2}:\d{2}[ap]\.?\s*m\.\s*){4})(.*?)\s+(?:AA|A|B15|B|C|S\?)?\s*(SALA\s*\d+|SALA[A-Z\s]*\d+|MXE|SALA\s*JR)/gi;
                 let match;
                 let rawData = [];
 
-                // Filtros de usuario
                 const startTimeStr = document.getElementById('startTimeFilter').value;
                 let minStartMinutes = 0;
                 if (startTimeStr) {
@@ -253,35 +249,34 @@
                 while ((match = regex.exec(fullText)) !== null) {
                     let timesStr = match[1];
                     let title = match[2].trim();
-                    let salaStr = match[3].trim();
+                    let salaStr = match[3].trim().toUpperCase();
                     
                     let timeMatches = timesStr.match(/\d{2}:\d{2}[ap]\.?\s*m\./gi);
                     if (timeMatches && timeMatches.length >= 4) {
-                        // Según la estructura del PDF:
-                        // [0] = Comienzo Película
-                        // [1] = Finish (Cierre)
-                        // [2] = Comienzo Función (Apertura de Puertas / Ingreso)
-                        // [3] = Cleanup Complete
                         let entryTimeRaw = timeMatches[2]; 
                         let fallbackFinishRaw = timeMatches[1]; 
                         
                         let entryParsed = parsePdfTime(entryTimeRaw, 0);
                         
-                        // Sincronizar título con el Excel para obtener la duración exacta
                         let cleanTitle = cleanPdfName(title);
                         let duration = findDuration(cleanTitle, movieDurations);
                         
                         let exitParsed;
                         if (duration !== null) {
-                            // Sumamos la duración exacta del Excel a la Hora de Ingreso
                             exitParsed = parsePdfTime(entryTimeRaw, duration + offsetMinutes);
                         } else {
-                            // Si por algún motivo no la encuentra en los 3 excels, usa la del PDF como respaldo
                             exitParsed = parsePdfTime(fallbackFinishRaw, offsetMinutes);
                         }
 
+                        // Lógica corregida para reconocer Salas MXE y SALA JR (17)
+                        let roomNum = 0;
                         let roomMatch = salaStr.match(/\d+/);
-                        let roomNum = roomMatch ? parseInt(roomMatch[0]) : (salaStr.includes('MXE') ? 7 : 0);
+                        if (roomMatch) {
+                            roomNum = parseInt(roomMatch[0]);
+                        } else {
+                            if (salaStr.includes('MXE')) roomNum = 7;
+                            else if (salaStr.includes('JR')) roomNum = 17;
+                        }
 
                         if (roomNum >= altStartRoom && exitParsed.sortValue >= minStartMinutes) {
                             rawData.push({
@@ -344,12 +339,12 @@
                     rawData.forEach(d => d.displayRoom = d.roomNum.toString());
                 }
 
-                // DIBUJAR TABLA
+                // DIBUJAR TABLA (Conserva toda la información para visualización)
                 document.getElementById('tableBody').innerHTML = '';
                 rawData.forEach(d => addRow(d.movieName, d.entryTime, d.exitTime, d.displayRoom));
 
                 statusDiv.style.color = '#28a745';
-                statusDiv.innerText = `¡${rawData.length} funciones combinadas y extraídas con éxito!`;
+                statusDiv.innerText = `¡${rawData.length} funciones extraídas con éxito!`;
                 document.getElementById('editorSection').style.display = 'block';
 
             } catch (error) {
@@ -359,7 +354,6 @@
             }
         }
 
-        // Obtener solo minutos absolutos desde el Excel
         function getMinutesFromExcel(timeVal) {
             let hours = 0, minutes = 0;
             if (timeVal instanceof Date && !isNaN(timeVal.getTime())) {
@@ -375,7 +369,6 @@
             return hours * 60 + minutes;
         }
 
-        // Convertir hora tipo "02:44p. m." del PDF a minutos absolutos, sumar duración y formatear a 12h
         function parsePdfTime(timeStr, addMins) {
             let isPM = timeStr.toLowerCase().includes('p');
             let parts = timeStr.match(/\d+/g);
@@ -388,7 +381,7 @@
             let totalMins = (hours * 60) + minutes + addMins;
             hours = Math.floor(totalMins / 60) % 24;
             if (hours < 0) hours += 24;
-            minutes = totalMins % 60;
+            minutes = Math.floor(totalMins % 60);
             
             let sortValue = (hours >= 0 && hours <= 3) ? hours + 24 : hours;
             sortValue = sortValue * 60 + minutes;
@@ -512,22 +505,18 @@
         }
 
         // ==========================================
-        // IMPRESIÓN DEL PDF EXACTO (4 COLUMNAS)
+        // IMPRESIÓN DEL PDF (DISEÑO CLÁSICO 2 COLUMNAS)
         // ==========================================
         function generatePDF() {
-            const movies = document.querySelectorAll('.movie-input');
-            const entries = document.querySelectorAll('.entry-input');
             const exits = document.querySelectorAll('.exit-input');
             const rooms = document.querySelectorAll('.room-input');
             
             let validData = [];
-            for (let i = 0; i < movies.length; i++) {
+            for (let i = 0; i < exits.length; i++) {
                 if (exits[i].value.trim() !== "" && rooms[i].value.trim() !== "") {
                     validData.push({ 
-                        movie: movies[i].value.trim(), 
-                        entry: entries[i].value.trim(), 
                         exit: exits[i].value.trim(), 
-                        room: rooms[i].value.trim() 
+                        roomStr: rooms[i].value.trim() 
                     });
                 }
             }
@@ -538,23 +527,30 @@
             const doc = new jsPDF({ orientation: 'l', unit: 'mm', format: 'letter' });
             const title = document.getElementById('dayTitle').value || 'MARTES :)';
             
-            const colEntryW = 15;
-            const colExitW = 15;
-            const colMovieW = 45;
-            const colRoomW = 15;
-            const totalW = colEntryW + colExitW + colMovieW + colRoomW; // 90mm
+            // Regresamos a las medidas exactas del diseño de 2 columnas original
+            const col1W = 28; 
+            const col2W = 14; 
+            const subW = col1W + col2W; // 42mm
+            const gap = 3; 
+            const totalW = subW + gap + subW; // 87mm
 
             function drawBlock(startX, blockData) {
-                let maxRows = blockData.length;
+                let maxRows = Math.ceil(blockData.length / 2);
                 if (maxRows < 15) maxRows = 15; 
                 
                 let rowHeight = 5.5; 
-                let fontSize = 9;
+                let fontSize = 10;
                 
                 if (maxRows > 32) {
                     rowHeight = 180 / maxRows; 
-                    if(rowHeight < 4) fontSize = 7; 
-                    else if (rowHeight < 5) fontSize = 8;
+                    if(rowHeight < 4.5) fontSize = 8; 
+                }
+
+                const subCol1 = [];
+                const subCol2 = [];
+                for(let i=0; i < maxRows; i++) {
+                    subCol1.push(blockData[i] || {exit: '', roomStr: ''});
+                    subCol2.push(blockData[i + maxRows] || {exit: '', roomStr: ''});
                 }
 
                 const currentY = 12;
@@ -571,61 +567,51 @@
 
                 const startY = currentY + 8; 
 
-                doc.setFont("helvetica", "bold");
-                doc.setFontSize(8);
-                doc.text("INGRESO", startX + 1.5, startY - 1);
-                doc.text("SALIDA", startX + colEntryW + 2, startY - 1);
-                doc.text("PELÍCULA", startX + colEntryW + colExitW + 2, startY - 1);
-                doc.text("SALA", startX + colEntryW + colExitW + colMovieW + 3, startY - 1);
-
-                doc.setLineWidth(0.2); 
-                
-                for (let i = 0; i < maxRows; i++) {
-                    let y = startY + (i * rowHeight);
+                function drawSubCol(x, items) {
+                    doc.setLineWidth(0.2); 
                     
-                    doc.rect(startX, y, colEntryW, rowHeight);
-                    doc.rect(startX + colEntryW, y, colExitW, rowHeight);
-                    doc.rect(startX + colEntryW + colExitW, y, colMovieW, rowHeight);
-                    doc.rect(startX + colEntryW + colExitW + colMovieW, y, colRoomW, rowHeight);
+                    for (let i = 0; i < items.length; i++) {
+                        let y = startY + (i * rowHeight);
+                        doc.rect(x, y, col1W, rowHeight);
+                        doc.rect(x + col1W, y, col2W, rowHeight);
 
-                    if (i < blockData.length) {
-                        let item = blockData[i];
-                        doc.setFont("helvetica", "normal");
-                        doc.setFontSize(fontSize);
-                        
-                        doc.text(item.entry, startX + 1.5, y + (rowHeight * 0.75));
-                        doc.text(item.exit, startX + colEntryW + 1.5, y + (rowHeight * 0.75));
-                        
-                        let mName = item.movie;
-                        if(mName.length > 22) mName = mName.substring(0, 20) + "...";
-                        doc.text(mName, startX + colEntryW + colExitW + 2, y + (rowHeight * 0.75));
-                        
-                        doc.setFont("helvetica", "bold");
-                        doc.text(item.room.toString(), startX + colEntryW + colExitW + colMovieW + (colRoomW / 2), y + (rowHeight * 0.75), { align: "center" });
+                        if (items[i].exit !== '') {
+                            doc.setFont("helvetica", "normal");
+                            doc.setFontSize(fontSize);
+                            
+                            // Solo dibujamos la Hora de Salida y la Sala
+                            doc.text(items[i].exit, x + 2, y + (rowHeight * 0.75));
+                            
+                            doc.setFont("helvetica", "bold");
+                            doc.text(items[i].roomStr.toString(), x + col1W + (col2W / 2), y + (rowHeight * 0.75), { align: "center" });
+                        }
                     }
+
+                    const h = items.length * rowHeight;
+                    const corner = 3.5; 
+
+                    doc.setLineWidth(0.8); 
+                    doc.line(x, startY, x + subW, startY); 
+                    doc.line(x, startY, x, startY + h); 
+                    doc.line(x, startY + h, x + subW - corner, startY + h); 
+                    doc.line(x + subW, startY, x + subW, startY + h - corner); 
+                    doc.line(x + subW - corner, startY + h, x + subW, startY + h - corner);
+
+                    doc.setLineWidth(0.2);
+                    doc.line(x + subW - corner, startY + h, x + subW - corner, startY + h - corner);
+                    doc.line(x + subW - corner, startY + h - corner, x + subW, startY + h - corner);
                 }
 
-                const h = maxRows * rowHeight;
-                const corner = 3.5; 
-
-                doc.setLineWidth(0.8); 
-                doc.line(startX, startY, startX + totalW, startY); 
-                doc.line(startX, startY, startX, startY + h); 
-                doc.line(startX, startY + h, startX + totalW - corner, startY + h); 
-                doc.line(startX + totalW, startY, startX + totalW, startY + h - corner); 
-                doc.line(startX + totalW - corner, startY + h, startX + totalW, startY + h - corner);
-
-                doc.setLineWidth(0.2);
-                doc.line(startX + totalW - corner, startY + h, startX + totalW - corner, startY + h - corner);
-                doc.line(startX + totalW - corner, startY + h - corner, startX + totalW, startY + h - corner);
+                drawSubCol(startX, subCol1);
+                drawSubCol(startX + subW + gap, subCol2);
             }
 
-            drawBlock(25, validData);  
-            drawBlock(160, validData); 
+            // Dibuja las dos copias idénticas centradas
+            drawBlock(26, validData);  
+            drawBlock(166, validData); 
 
-            doc.save("horarios_funciones_cierres.pdf");
+            doc.save("horarios_cierres_clasico.pdf");
         }
     </script>
 </body>
 </html>
-
