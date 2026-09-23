@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Módulo de Cierres Híbrido (PDF + Excel)</title>
+    <title>Módulo de Cierres (Precisión por Créditos)</title>
     
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.min.js"></script>
@@ -58,7 +58,7 @@
             <div class="control-item" style="flex: 100%;">
                 <label>2. Cargar Archivos Excel/CSV/TSV (Para extraer duración exacta)</label>
                 <input type="file" id="excelInput" accept=".xlsx, .xls, .csv, .tsv" multiple>
-                <small style="font-size: 11px; color: #666;">Se calculará la salida restando SCHEDULED_TIME - CREDITS_TIME y sumándolo al ingreso.</small>
+                <small style="font-size: 11px; color: #666;">El cierre será: Columna 'Finish' del PDF + (END_TIME - CREDITS_TIME).</small>
             </div>
             
             <div class="control-item">
@@ -111,8 +111,8 @@
             <thead>
                 <tr>
                     <th>Película</th>
-                    <th>Ingreso (Inicio de Función)</th>
-                    <th>Salida (Cierre)</th>
+                    <th>Ingreso (Apertura)</th>
+                    <th>Salida (Cierre Exacto)</th>
                     <th>Sala / Caseta</th>
                     <th>Acción</th>
                 </tr>
@@ -166,10 +166,9 @@
                     if (k.startsWith(pdfStart)) return movieDurations[k];
                 }
             }
-            return null; 
+            return 0; // Por defecto 0 si no encuentra la duración
         }
 
-        // Extraer segundos absolutos desde el Excel
         function getSecondsFromExcel(timeVal) {
             let hours = 0, minutes = 0, seconds = 0;
             if (timeVal instanceof Date && !isNaN(timeVal.getTime())) {
@@ -202,14 +201,14 @@
                 return alert("Debes subir el archivo PDF de la programación.");
             }
             if (!excelInput.files || excelInput.files.length === 0) {
-                return alert("Debes subir al menos un archivo Excel/CSV para calcular las duraciones exactas.");
+                return alert("Debes subir al menos un archivo Excel/CSV.");
             }
 
             statusDiv.style.color = '#0056b3';
-            statusDiv.innerText = "Analizando y calculando duraciones...";
+            statusDiv.innerText = "Calculando duraciones y analizando el PDF...";
 
             try {
-                // PASO 1: LEER EXCEL Y CALCULAR DURACIÓN (CREDITS_TIME - SCHEDULED_TIME) CON REGLA DE >25 SEGUNDOS
+                // PASO 1: EXCEL (CALCULAR: END_TIME - CREDITS_TIME)
                 let movieDurations = {}; 
 
                 for (let i = 0; i < excelInput.files.length; i++) {
@@ -221,25 +220,21 @@
                     
                     json.forEach(row => {
                         let feature = row['FEATURE'] || row['Pelicula'];
-                        let scheduledTime = row['SCHEDULED_TIME']; // Usamos SCHEDULED_TIME solicitado
-                        let creditsTime = row['CREDITS_TIME'];     // Usamos CREDITS_TIME solicitado
+                        let creditsTime = row['CREDITS_TIME'];
+                        let endTime = row['END_TIME'];
                         
-                        if (feature && scheduledTime && creditsTime) {
-                            let stSecs = getSecondsFromExcel(scheduledTime);
+                        if (feature && creditsTime && endTime) {
                             let ctSecs = getSecondsFromExcel(creditsTime);
+                            let etSecs = getSecondsFromExcel(endTime);
                             
-                            if (stSecs !== null && ctSecs !== null) {
-                                // Resta de CREDITS_TIME - SCHEDULED_TIME
-                                let diffSecs = ctSecs - stSecs;
-                                if (diffSecs < 0) diffSecs += 24 * 3600; // Corrección por cambio de día (medianoche)
+                            if (ctSecs !== null && etSecs !== null) {
+                                let diffSecs = etSecs - ctSecs;
+                                if (diffSecs < 0) diffSecs += 24 * 3600; 
                                 
                                 let diffMins = Math.floor(diffSecs / 60);
                                 let remSecs = diffSecs % 60;
                                 
-                                // Regla: Si pasa de 25 segundos, se suma 1 minuto
-                                if (remSecs > 25) {
-                                    diffMins += 1;
-                                }
+                                if (remSecs > 25) diffMins += 1;
 
                                 let key = cleanExcelName(feature);
                                 movieDurations[key] = diffMins;
@@ -248,7 +243,7 @@
                     });
                 }
 
-                // PASO 2: LEER EL PDF Y EXTRAER LA HORA DE COMIENZO DE LA FUNCIÓN
+                // PASO 2: LEER PDF
                 const pdfFile = pdfInput.files[0];
                 const pdfArrayBuffer = new Uint8Array(await pdfFile.arrayBuffer());
                 const pdf = await pdfjsLib.getDocument({data: pdfArrayBuffer}).promise;
@@ -279,23 +274,23 @@
                     
                     let timeMatches = timesStr.match(/\d{2}:\d{2}[ap]\.?\s*m\./gi);
                     if (timeMatches && timeMatches.length >= 4) {
-                        // En la estructura del PDF: timeMatches[2] es "Comienzo Función" (Hora de ingreso)
-                        // timeMatches[1] es "Finish"
-                        let entryTimeRaw = timeMatches[2]; 
-                        let fallbackFinishRaw = timeMatches[1]; 
+                        
+                        // Ordenamos cronológicamente las 4 horas del PDF para no equivocarnos nunca
+                        let timesWithObj = timeMatches.map(t => { return { raw: t, parsed: parsePdfTime(t, 0) }; });
+                        timesWithObj.sort((a, b) => a.parsed.sortValue - b.parsed.sortValue);
+                        
+                        // La 1era hora es el Ingreso (Comienzo Función)
+                        // La 3era hora es el Finish (Inicio de Créditos)
+                        let entryTimeRaw = timesWithObj[0].raw; 
+                        let pdfFinishRaw = timesWithObj[2].raw; 
                         
                         let entryParsed = parsePdfTime(entryTimeRaw, 0);
                         
                         let cleanTitle = cleanPdfName(title);
-                        let duration = findDuration(cleanTitle, movieDurations);
+                        let creditsDuration = findDuration(cleanTitle, movieDurations);
                         
-                        let exitParsed;
-                        if (duration !== null) {
-                            // HORA SALIDA = COMIENZO FUNCIÓN + DURACIÓN (Ya redondeada) + OFFSET
-                            exitParsed = parsePdfTime(entryTimeRaw, duration + offsetMinutes);
-                        } else {
-                            exitParsed = parsePdfTime(fallbackFinishRaw, offsetMinutes);
-                        }
+                        // MAGIA: Sumamos la duración de los créditos de Excel a la columna 'Finish' del PDF
+                        let exitParsed = parsePdfTime(pdfFinishRaw, creditsDuration + offsetMinutes);
 
                         let roomNum = 0;
                         let roomMatch = salaStr.match(/\d+/);
@@ -324,7 +319,6 @@
                     return;
                 }
 
-                // PASO 4: ORDENAR Y APLICAR ALTERNANCIA
                 rawData.sort((a, b) => a.sortValue - b.sortValue);
 
                 const altMode = document.getElementById('altMode').value;
@@ -377,11 +371,10 @@
             } catch (error) {
                 console.error(error);
                 statusDiv.style.color = '#d9534f';
-                statusDiv.innerText = "Error crítico al procesar los archivos.";
+                statusDiv.innerText = "Error crítico al procesar los archivos. Verifica que sean correctos.";
             }
         }
 
-        // Parsea el tiempo del PDF (e.g. 02:44p. m.) y le suma minutos enteros
         function parsePdfTime(timeStr, addMins) {
             let isPM = timeStr.toLowerCase().includes('p');
             let parts = timeStr.match(/\d+/g);
@@ -423,9 +416,6 @@
             tbody.appendChild(tr);
         }
 
-        // ==========================================
-        // BASE DE DATOS LOCAL
-        // ==========================================
         function getDBSchedules() {
             return JSON.parse(localStorage.getItem('cinepolis_schedules_hybrid')) || [];
         }
@@ -469,12 +459,10 @@
         function renderSavedSchedules() {
             const db = getDBSchedules();
             const list = document.getElementById('savedSchedulesList');
-            
             if (db.length === 0) {
                 list.innerHTML = '<li>No hay horarios guardados.</li>';
                 return;
             }
-
             list.innerHTML = '';
             db.forEach(record => {
                 const li = document.createElement('li');
@@ -496,7 +484,6 @@
         function loadSchedule(id) {
             const db = getDBSchedules();
             const record = db.find(r => r.id === id);
-            
             if (record) {
                 document.getElementById('dayTitle').value = record.title;
                 document.getElementById('tableBody').innerHTML = '';
@@ -515,9 +502,6 @@
             }
         }
 
-        // ==========================================
-        // IMPRESIÓN DEL PDF (DISEÑO CLÁSICO 2 COLUMNAS)
-        // ==========================================
         function generatePDF() {
             const exits = document.querySelectorAll('.exit-input');
             const rooms = document.querySelectorAll('.room-input');
@@ -525,10 +509,7 @@
             let validData = [];
             for (let i = 0; i < exits.length; i++) {
                 if (exits[i].value.trim() !== "" && rooms[i].value.trim() !== "") {
-                    validData.push({ 
-                        exit: exits[i].value.trim(), 
-                        roomStr: rooms[i].value.trim() 
-                    });
+                    validData.push({ exit: exits[i].value.trim(), roomStr: rooms[i].value.trim() });
                 }
             }
 
