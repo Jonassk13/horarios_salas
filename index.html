@@ -3,9 +3,11 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Módulo de Cierres y Funciones - Local</title>
+    <title>Módulo de Cierres Híbrido (PDF + Excel)</title>
     
+    <!-- Librerías: Excel, PDF.js y Generador de PDFs -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 
     <style>
@@ -38,11 +40,11 @@
 <body>
 
     <div class="card">
-        <h1>Control Operativo (Películas, Ingresos y Cierres)</h1>
+        <h1>Control Operativo (Sincronización PDF + Excel)</h1>
         
         <!-- BOTONES DE ACCIÓN PRINCIPALES -->
         <div class="top-actions">
-            <button onclick="processExcel()">1. Extraer Horarios</button>
+            <button onclick="processFiles()">1. Sincronizar y Extraer</button>
             <button onclick="addRow('', '', '', '')">+ Fila Manual</button>
             <button onclick="saveScheduleToDB()" class="btn-warning">Guardar en Historial</button>
             <button onclick="generatePDF()" class="btn-success">Imprimir Formato PDF</button>
@@ -50,52 +52,47 @@
 
         <div id="status"></div>
         
-        <!-- CONFIGURACIÓN DEL ARCHIVO -->
+        <!-- CONFIGURACIÓN DE ARCHIVOS -->
         <div class="control-group">
             <div class="control-item" style="flex: 100%;">
-                <label>Cargar Archivo Excel del Sistema</label>
-                <input type="file" id="excelInput" accept=".xlsx, .xls, .csv">
+                <label>1. Cargar Archivo PDF (Programación Oficial)</label>
+                <input type="file" id="pdfInput" accept=".pdf">
             </div>
+            <div class="control-item" style="flex: 100%;">
+                <label>2. Cargar Archivos Excel/CSV/TSV (Para extraer duración. ¡Puedes subir los 3 a la vez!)</label>
+                <input type="file" id="excelInput" accept=".xlsx, .xls, .csv, .tsv" multiple>
+            </div>
+            
             <div class="control-item">
                 <label>Título del día</label>
                 <input type="text" id="dayTitle" value="MARTES :)" placeholder="Ej. MARTES :)">
             </div>
             <div class="control-item">
-                <label>Tomar hora de Salida de:</label>
-                <select id="timeField">
-                    <option value="END_TIME">Fin de Función (Recomendado)</option>
-                    <option value="CREDITS_TIME">Inicio de Créditos</option>
-                </select>
-            </div>
-            <div class="control-item">
-                <label>Filtro: Funciones desde (24h):</label>
+                <label>Filtro: Cierres desde (24h):</label>
                 <input type="time" id="startTimeFilter" value="">
-                <small style="font-size: 11px; color: #666;">Dejar en blanco para todo el día.</small>
             </div>
             <div class="control-item">
                 <label>Ajuste tiempo Salida (Min)</label>
-                <input type="number" id="timeOffset" value="0" placeholder="Ej. 10">
+                <input type="number" id="timeOffset" value="0">
             </div>
         </div>
 
-        <!-- CONFIGURACIÓN DE ALTERNANCIA (SALAS Y CASETAS) -->
+        <!-- CONFIGURACIÓN DE ALTERNANCIA -->
         <div class="alt-box">
             <h3 style="margin-top: 0; font-size: 16px; color: #0056b3;">Reglas de Asignación (Salas / Casetas)</h3>
             <div style="display: flex; gap: 15px; flex-wrap: wrap;">
                 <div class="control-item">
-                    <label>¿Alternar Salas y Casetas (S/C)?</label>
+                    <label>¿Alternar Salas y Casetas?</label>
                     <select id="altMode" onchange="toggleAltSettings()">
-                        <option value="none">No alternar (Solo números)</option>
+                        <option value="none">No alternar</option>
                         <option value="chrono">Sí, Cronológicamente</option>
                         <option value="numeric">Sí, Por número de Sala</option>
                     </select>
                 </div>
-                
                 <div class="control-item" id="altSettingsBox1" style="display: none;">
                     <label>Empezar con la Sala:</label>
                     <input type="number" id="altStartRoom" value="1" min="1">
                 </div>
-                
                 <div class="control-item" id="altSettingsBox2" style="display: none;">
                     <label>Esa sala inicial será:</label>
                     <select id="altStartRole">
@@ -103,11 +100,9 @@
                         <option value="C">Caseta (C)</option>
                     </select>
                 </div>
-
                 <div class="control-item" id="altSettingsBox3" style="display: none;">
                     <label>Casetas empiezan desde las:</label>
                     <input type="time" id="timeCasetasFilter" value="19:00">
-                    <small style="font-size: 11px; color: #666;">Antes de esto, se forzará como (S).</small>
                 </div>
             </div>
         </div>
@@ -116,7 +111,6 @@
     <!-- VISTA PREVIA Y EDICIÓN -->
     <div class="card" id="editorSection" style="display: none;">
         <h2 id="editorTitle">Vista Previa y Edición</h2>
-        
         <table id="dataTable">
             <thead>
                 <tr>
@@ -132,7 +126,6 @@
         </table>
     </div>
 
-    <!-- HISTORIAL DE HORARIOS GUARDADOS -->
     <div class="card">
         <h2>Historial de Horarios Guardados (Local)</h2>
         <ul class="db-list" id="savedSchedulesList">
@@ -141,6 +134,9 @@
     </div>
 
     <script>
+        // Configurar el worker de PDF.js
+        pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.worker.min.js';
+
         window.onload = function() {
             renderSavedSchedules();
         };
@@ -153,193 +149,257 @@
             document.getElementById('altSettingsBox3').style.display = displayStyle;
         }
 
-        // Limpiar el nombre de la película (Ej. COYOTEVSACME_FTR... -> Coyotevsacme)
-        function cleanMovieName(rawName) {
-            if (!rawName) return "Desconocida";
-            let clean = rawName.split('_')[0];
-            return clean.charAt(0).toUpperCase() + clean.slice(1).toLowerCase();
+        // LIMPIEZA DE NOMBRES PARA SINCRONIZACIÓN
+        function cleanExcelName(name) {
+            if (!name) return "";
+            return name.split('_')[0].toLowerCase().replace(/[^a-z0-9]/g, '');
         }
 
-        function processExcel() {
-            const input = document.getElementById('excelInput');
-            const timeField = document.getElementById('timeField').value; // END_TIME
+        function cleanPdfName(name) {
+            if (!name) return "";
+            let clean = name.replace(/(Esp|Sub|SP|4DX|3D|SCREENX|SJ|TCF|JR)/gi, '');
+            return clean.replace(/[^a-zA-Z0-9]/g, '').toLowerCase();
+        }
+
+        // BÚSQUEDA INTELIGENTE
+        function findDuration(pdfClean, movieDurations) {
+            let keys = Object.keys(movieDurations);
+            // 1. Coincidencia directa o interna
+            for (let k of keys) {
+                if (pdfClean.includes(k) || k.includes(pdfClean)) return movieDurations[k];
+            }
+            // 2. Coincidencia parcial (Primeras 5 letras)
+            let pdfStart = pdfClean.substring(0, 5);
+            if (pdfStart.length >= 4) {
+                for (let k of keys) {
+                    if (k.startsWith(pdfStart)) return movieDurations[k];
+                }
+            }
+            return null; // Si no hay match
+        }
+
+        async function processFiles() {
+            const pdfInput = document.getElementById('pdfInput');
+            const excelInput = document.getElementById('excelInput');
             const offsetMinutes = parseInt(document.getElementById('timeOffset').value) || 0;
-            const startTimeStr = document.getElementById('startTimeFilter').value;
             const statusDiv = document.getElementById('status');
 
-            if (!input.files || input.files.length === 0) {
-                alert("Por favor selecciona tu archivo de Excel.");
-                return;
+            if (!pdfInput.files || pdfInput.files.length === 0) {
+                return alert("Debes subir el archivo PDF de la programación.");
             }
-
-            let minStartMinutes = 0;
-            if (startTimeStr) {
-                let parts = startTimeStr.split(':');
-                minStartMinutes = parseInt(parts[0]) * 60 + parseInt(parts[1]);
-            }
-
-            const timeCasetasStr = document.getElementById('timeCasetasFilter').value;
-            let minCasetasMinutes = 0;
-            if (timeCasetasStr) {
-                let partsC = timeCasetasStr.split(':');
-                minCasetasMinutes = parseInt(partsC[0]) * 60 + parseInt(partsC[1]);
+            if (!excelInput.files || excelInput.files.length === 0) {
+                return alert("Debes subir al menos un archivo Excel/CSV para calcular duraciones.");
             }
 
             statusDiv.style.color = '#0056b3';
-            statusDiv.innerText = "Procesando archivo Excel...";
-            
-            const file = input.files[0];
-            const reader = new FileReader();
+            statusDiv.innerText = "Analizando y sincronizando archivos...";
 
-            reader.onload = function(e) {
-                try {
-                    const data = new Uint8Array(e.target.result);
+            try {
+                // PASO 1: LEER EXCEL Y CREAR DICCIONARIO DE DURACIONES
+                let movieDurations = {}; // Guardará los minutos que dura cada película
+
+                for (let i = 0; i < excelInput.files.length; i++) {
+                    const file = excelInput.files[i];
+                    const data = new Uint8Array(await file.arrayBuffer());
                     const workbook = XLSX.read(data, {type: 'array', cellDates: true});
-                    const sheetName = workbook.SheetNames[0];
-                    const worksheet = workbook.Sheets[sheetName];
-                    const json = XLSX.utils.sheet_to_json(worksheet);
+                    const sheet = workbook.Sheets[workbook.SheetNames[0]];
+                    const json = XLSX.utils.sheet_to_json(sheet);
                     
-                    let rawData = [];
-                    const altStartRoom = parseInt(document.getElementById('altStartRoom').value) || 1;
-
                     json.forEach(row => {
-                        let auditorium = row['AUDITORIUM'];
-                        let exitTimeVal = row[timeField]; 
-                        let entryTimeVal = row['SHOW_TIME'] || row['SCHEDULED_TIME']; 
-                        let featureVal = row['FEATURE'] || row['Pelicula'] || 'Función';
-
-                        if (auditorium && exitTimeVal !== undefined && entryTimeVal !== undefined) {
-                            let roomMatch = String(auditorium).match(/\d+/);
-                            let roomNum = roomMatch ? parseInt(roomMatch[0]) : null;
-                            
-                            if (roomNum !== null && roomNum >= altStartRoom) {
-                                // Procesar Salida (Aplica offset y regla de >25s)
-                                let exitTimeObj = modifyTime(exitTimeVal, offsetMinutes, true);
-                                // Procesar Ingreso (Hora exacta, sin offset)
-                                let entryTimeObj = modifyTime(entryTimeVal, 0, false);
-                                
-                                if (exitTimeObj && entryTimeObj) {
-                                    if (exitTimeObj.sortValue >= minStartMinutes) {
-                                        rawData.push({
-                                            movieName: cleanMovieName(featureVal),
-                                            entryTime: entryTimeObj.display,
-                                            exitTime: exitTimeObj.display,
-                                            sortValue: exitTimeObj.sortValue,
-                                            roomNum: roomNum
-                                        });
-                                    }
-                                }
+                        let feature = row['FEATURE'] || row['Pelicula'];
+                        let showTime = row['SHOW_TIME'] || row['SCHEDULED_TIME'];
+                        let creditsTime = row['CREDITS_TIME'];
+                        
+                        if (feature && showTime && creditsTime) {
+                            let st = getMinutesFromExcel(showTime);
+                            let ct = getMinutesFromExcel(creditsTime);
+                            if (st !== null && ct !== null) {
+                                let duration = ct - st;
+                                if (duration < 0) duration += 24 * 60; // Por si cruza la medianoche
+                                let key = cleanExcelName(feature);
+                                movieDurations[key] = duration;
                             }
                         }
                     });
-
-                    if (rawData.length === 0) {
-                        statusDiv.style.color = '#d9534f';
-                        statusDiv.innerText = "No se encontraron funciones. Revisa el archivo y los filtros.";
-                        return;
-                    }
-
-                    // Ordenar por hora de Salida (Cierre)
-                    rawData.sort((a, b) => a.sortValue - b.sortValue);
-
-                    // Lógica de Alternancia Salas/Casetas
-                    const altMode = document.getElementById('altMode').value;
-                    const altStartRole = document.getElementById('altStartRole').value;
-
-                    if (altMode === 'numeric') {
-                        rawData.forEach(d => {
-                            let forceSala = minCasetasMinutes > 0 && d.sortValue < minCasetasMinutes;
-                            let diff = d.roomNum - altStartRoom;
-                            let role = (diff % 2 === 0) ? altStartRole : (altStartRole === 'S' ? 'C' : 'S');
-                            if (forceSala) role = 'S';
-                            d.displayRoom = `${role}-${d.roomNum}`;
-                        });
-                    } else if (altMode === 'chrono') {
-                        let toggle = (altStartRole === 'S'); 
-                        let alternatingStarted = false;
-
-                        rawData.forEach(d => {
-                            let forceSala = minCasetasMinutes > 0 && d.sortValue < minCasetasMinutes;
-                            if (!alternatingStarted && d.roomNum === altStartRoom) alternatingStarted = true;
-                            
-                            if (alternatingStarted) {
-                                let role = toggle ? 'S' : 'C';
-                                if (forceSala) {
-                                    role = 'S';
-                                } else {
-                                    toggle = !toggle; 
-                                }
-                                d.displayRoom = `${role}-${d.roomNum}`;
-                            } else {
-                                d.displayRoom = forceSala ? `S-${d.roomNum}` : d.roomNum.toString();
-                            }
-                        });
-                    } else {
-                        rawData.forEach(d => d.displayRoom = d.roomNum.toString());
-                    }
-
-                    document.getElementById('tableBody').innerHTML = '';
-                    rawData.forEach(d => addRow(d.movieName, d.entryTime, d.exitTime, d.displayRoom));
-
-                    statusDiv.style.color = '#28a745';
-                    statusDiv.innerText = `¡${rawData.length} funciones extraídas con éxito!`;
-                    document.getElementById('editorSection').style.display = 'block';
-
-                } catch (error) {
-                    console.error(error);
-                    statusDiv.style.color = '#d9534f';
-                    statusDiv.innerText = "Hubo un error al leer el archivo Excel.";
                 }
-            };
-            reader.readAsArrayBuffer(file);
+
+                // PASO 2: LEER EL PDF Y EXTRAER EL TEXTO CRUDO
+                const pdfFile = pdfInput.files[0];
+                const pdfArrayBuffer = new Uint8Array(await pdfFile.arrayBuffer());
+                const pdf = await pdfjsLib.getDocument({data: pdfArrayBuffer}).promise;
+                
+                let fullText = "";
+                for (let i = 1; i <= pdf.numPages; i++) {
+                    const page = await pdf.getPage(i);
+                    const content = await page.getTextContent();
+                    fullText += content.items.map(item => item.str).join(' ') + ' ';
+                }
+
+                // PASO 3: EXTRACCIÓN CON EXPRESIONES REGULARES
+                // Busca 4 horas seguidas, un texto (título), un rating opcional, y la SALA
+                const regex = /((?:\d{2}:\d{2}[ap]\.?\s*m\.\s*){4})(.*?)\s+(?:AA|A|B15|B|C|S\?)?\s*(SALA\s*\d+|SALA[A-Z\s]*\d+|MXE|SALA\s*JR)/gi;
+                let match;
+                let rawData = [];
+
+                // Filtros de usuario
+                const startTimeStr = document.getElementById('startTimeFilter').value;
+                let minStartMinutes = 0;
+                if (startTimeStr) {
+                    let parts = startTimeStr.split(':');
+                    minStartMinutes = parseInt(parts[0]) * 60 + parseInt(parts[1]);
+                }
+                const altStartRoom = parseInt(document.getElementById('altStartRoom').value) || 1;
+
+                while ((match = regex.exec(fullText)) !== null) {
+                    let timesStr = match[1];
+                    let title = match[2].trim();
+                    let salaStr = match[3].trim();
+                    
+                    let timeMatches = timesStr.match(/\d{2}:\d{2}[ap]\.?\s*m\./gi);
+                    if (timeMatches && timeMatches.length >= 4) {
+                        // Según la estructura del PDF:
+                        // [0] = Comienzo Película
+                        // [1] = Finish (Cierre)
+                        // [2] = Comienzo Función (Apertura de Puertas / Ingreso)
+                        // [3] = Cleanup Complete
+                        let entryTimeRaw = timeMatches[2]; 
+                        let fallbackFinishRaw = timeMatches[1]; 
+                        
+                        let entryParsed = parsePdfTime(entryTimeRaw, 0);
+                        
+                        // Sincronizar título con el Excel para obtener la duración exacta
+                        let cleanTitle = cleanPdfName(title);
+                        let duration = findDuration(cleanTitle, movieDurations);
+                        
+                        let exitParsed;
+                        if (duration !== null) {
+                            // Sumamos la duración exacta del Excel a la Hora de Ingreso
+                            exitParsed = parsePdfTime(entryTimeRaw, duration + offsetMinutes);
+                        } else {
+                            // Si por algún motivo no la encuentra en los 3 excels, usa la del PDF como respaldo
+                            exitParsed = parsePdfTime(fallbackFinishRaw, offsetMinutes);
+                        }
+
+                        let roomMatch = salaStr.match(/\d+/);
+                        let roomNum = roomMatch ? parseInt(roomMatch[0]) : (salaStr.includes('MXE') ? 7 : 0);
+
+                        if (roomNum >= altStartRoom && exitParsed.sortValue >= minStartMinutes) {
+                            rawData.push({
+                                movieName: title,
+                                entryTime: entryParsed.display,
+                                exitTime: exitParsed.display,
+                                sortValue: exitParsed.sortValue,
+                                roomNum: roomNum
+                            });
+                        }
+                    }
+                }
+
+                if (rawData.length === 0) {
+                    statusDiv.style.color = '#d9534f';
+                    statusDiv.innerText = "No se encontraron funciones que coincidan con los filtros.";
+                    return;
+                }
+
+                // PASO 4: ORDENAR Y APLICAR ALTERNANCIA
+                rawData.sort((a, b) => a.sortValue - b.sortValue);
+
+                const altMode = document.getElementById('altMode').value;
+                const altStartRole = document.getElementById('altStartRole').value;
+                const timeCasetasStr = document.getElementById('timeCasetasFilter').value;
+                let minCasetasMinutes = 0;
+                if (timeCasetasStr) {
+                    let pC = timeCasetasStr.split(':');
+                    minCasetasMinutes = parseInt(pC[0]) * 60 + parseInt(pC[1]);
+                }
+
+                if (altMode === 'numeric') {
+                    rawData.forEach(d => {
+                        let forceSala = minCasetasMinutes > 0 && d.sortValue < minCasetasMinutes;
+                        let diff = d.roomNum - altStartRoom;
+                        let role = (diff % 2 === 0) ? altStartRole : (altStartRole === 'S' ? 'C' : 'S');
+                        d.displayRoom = forceSala ? `S-${d.roomNum}` : `${role}-${d.roomNum}`;
+                    });
+                } else if (altMode === 'chrono') {
+                    let toggle = (altStartRole === 'S'); 
+                    let alternatingStarted = false;
+
+                    rawData.forEach(d => {
+                        let forceSala = minCasetasMinutes > 0 && d.sortValue < minCasetasMinutes;
+                        if (!alternatingStarted && d.roomNum === altStartRoom) alternatingStarted = true;
+                        
+                        if (alternatingStarted) {
+                            let role = toggle ? 'S' : 'C';
+                            if (forceSala) {
+                                role = 'S';
+                            } else {
+                                toggle = !toggle; 
+                            }
+                            d.displayRoom = `${role}-${d.roomNum}`;
+                        } else {
+                            d.displayRoom = forceSala ? `S-${d.roomNum}` : d.roomNum.toString();
+                        }
+                    });
+                } else {
+                    rawData.forEach(d => d.displayRoom = d.roomNum.toString());
+                }
+
+                // DIBUJAR TABLA
+                document.getElementById('tableBody').innerHTML = '';
+                rawData.forEach(d => addRow(d.movieName, d.entryTime, d.exitTime, d.displayRoom));
+
+                statusDiv.style.color = '#28a745';
+                statusDiv.innerText = `¡${rawData.length} funciones combinadas y extraídas con éxito!`;
+                document.getElementById('editorSection').style.display = 'block';
+
+            } catch (error) {
+                console.error(error);
+                statusDiv.style.color = '#d9534f';
+                statusDiv.innerText = "Error crítico al procesar los archivos. Verifica que sean correctos.";
+            }
         }
 
-        // applyRounding: Si es true, suma 1 min si los segundos pasan de 25
-        function modifyTime(timeVal, offsetMinutes, applyRounding) {
-            let hours = 0, minutes = 0, seconds = 0;
-
+        // Obtener solo minutos absolutos desde el Excel
+        function getMinutesFromExcel(timeVal) {
+            let hours = 0, minutes = 0;
             if (timeVal instanceof Date && !isNaN(timeVal.getTime())) {
-                hours = timeVal.getHours();
-                minutes = timeVal.getMinutes();
-                seconds = timeVal.getSeconds();
+                hours = timeVal.getHours(); minutes = timeVal.getMinutes();
             } else if (typeof timeVal === 'string' && timeVal.match(/^\d{1,2}:\d{2}/)) {
-                let parts = timeVal.split(':');
-                hours = parseInt(parts[0], 10);
-                minutes = parseInt(parts[1], 10);
-                seconds = parts[2] ? parseInt(parts[2], 10) : 0;
+                let p = timeVal.split(':'); hours = parseInt(p[0]); minutes = parseInt(p[1]);
             } else if (typeof timeVal === 'number') {
-                let totalSeconds = Math.round(timeVal * 24 * 3600);
-                hours = Math.floor(totalSeconds / 3600) % 24;
-                minutes = Math.floor((totalSeconds % 3600) / 60);
-                seconds = totalSeconds % 60;
+                let ts = Math.round(timeVal * 24 * 3600);
+                hours = Math.floor(ts / 3600) % 24; minutes = Math.floor((ts % 3600) / 60);
             } else {
-                let date = new Date(timeVal);
-                if (!isNaN(date.getTime())) {
-                    hours = date.getHours();
-                    minutes = date.getMinutes();
-                    seconds = date.getSeconds();
-                } else {
-                    return null; 
-                }
+                return null;
             }
+            return hours * 60 + minutes;
+        }
 
-            if (applyRounding && seconds > 25) minutes += 1;
-
-            let totalMinutes = (hours * 60) + minutes + offsetMinutes;
-            hours = Math.floor(totalMinutes / 60) % 24;
-            if (hours < 0) hours += 24; 
-            minutes = ((totalMinutes % 60) + 60) % 60;
-
+        // Convertir hora tipo "02:44p. m." del PDF a minutos absolutos, sumar duración y formatear a 12h
+        function parsePdfTime(timeStr, addMins) {
+            let isPM = timeStr.toLowerCase().includes('p');
+            let parts = timeStr.match(/\d+/g);
+            let hours = parseInt(parts[0]);
+            let minutes = parseInt(parts[1]);
+            
+            if (isPM && hours !== 12) hours += 12;
+            if (!isPM && hours === 12) hours = 0;
+            
+            let totalMins = (hours * 60) + minutes + addMins;
+            hours = Math.floor(totalMins / 60) % 24;
+            if (hours < 0) hours += 24;
+            minutes = totalMins % 60;
+            
             let sortValue = (hours >= 0 && hours <= 3) ? hours + 24 : hours;
             sortValue = sortValue * 60 + minutes;
-
-            const ampm = hours >= 12 ? 'PM' : 'AM';
-            let formattedHours = hours % 12;
-            formattedHours = formattedHours ? formattedHours : 12; 
-            let formattedMinutes = minutes < 10 ? '0' + minutes : minutes;
+            
+            let ampm = hours >= 12 ? 'PM' : 'AM';
+            let fHours = hours % 12;
+            fHours = fHours ? fHours : 12;
+            let fMins = minutes < 10 ? '0' + minutes : minutes;
             
             return {
-                display: `${formattedHours}:${formattedMinutes} ${ampm}`,
+                display: `${fHours}:${fMins} ${ampm}`,
                 sortValue: sortValue
             };
         }
@@ -361,7 +421,7 @@
         // BASE DE DATOS LOCAL
         // ==========================================
         function getDBSchedules() {
-            return JSON.parse(localStorage.getItem('cinepolis_schedules_full')) || [];
+            return JSON.parse(localStorage.getItem('cinepolis_schedules_hybrid')) || [];
         }
 
         function saveScheduleToDB() {
@@ -394,7 +454,7 @@
 
             let db = getDBSchedules();
             db.unshift(newRecord); 
-            localStorage.setItem('cinepolis_schedules_full', JSON.stringify(db));
+            localStorage.setItem('cinepolis_schedules_hybrid', JSON.stringify(db));
             
             alert("Horario guardado en el historial local.");
             renderSavedSchedules();
@@ -446,13 +506,13 @@
             if(confirm("¿Borrar este horario del historial?")) {
                 let db = getDBSchedules();
                 db = db.filter(r => r.id !== id);
-                localStorage.setItem('cinepolis_schedules_full', JSON.stringify(db));
+                localStorage.setItem('cinepolis_schedules_hybrid', JSON.stringify(db));
                 renderSavedSchedules();
             }
         }
 
         // ==========================================
-        // IMPRESIÓN DEL PDF EXACTO (DISEÑO 4 COLUMNAS)
+        // IMPRESIÓN DEL PDF EXACTO (4 COLUMNAS)
         // ==========================================
         function generatePDF() {
             const movies = document.querySelectorAll('.movie-input');
@@ -478,7 +538,6 @@
             const doc = new jsPDF({ orientation: 'l', unit: 'mm', format: 'letter' });
             const title = document.getElementById('dayTitle').value || 'MARTES :)';
             
-            // Medidas de columnas para que quepa la Película y los horarios
             const colEntryW = 15;
             const colExitW = 15;
             const colMovieW = 45;
@@ -492,7 +551,6 @@
                 let rowHeight = 5.5; 
                 let fontSize = 9;
                 
-                // Auto-ajuste si hay muchas funciones
                 if (maxRows > 32) {
                     rowHeight = 180 / maxRows; 
                     if(rowHeight < 4) fontSize = 7; 
@@ -501,7 +559,6 @@
 
                 const currentY = 12;
 
-                // Encabezado Trapecio
                 doc.setLineWidth(0.4);
                 doc.line(startX + 8, currentY, startX + totalW - 8, currentY); 
                 doc.line(startX, currentY + 6, startX + totalW, currentY + 6); 
@@ -514,7 +571,6 @@
 
                 const startY = currentY + 8; 
 
-                // Títulos de las columnas
                 doc.setFont("helvetica", "bold");
                 doc.setFontSize(8);
                 doc.text("INGRESO", startX + 1.5, startY - 1);
@@ -527,7 +583,6 @@
                 for (let i = 0; i < maxRows; i++) {
                     let y = startY + (i * rowHeight);
                     
-                    // Celdas
                     doc.rect(startX, y, colEntryW, rowHeight);
                     doc.rect(startX + colEntryW, y, colExitW, rowHeight);
                     doc.rect(startX + colEntryW + colExitW, y, colMovieW, rowHeight);
@@ -538,11 +593,9 @@
                         doc.setFont("helvetica", "normal");
                         doc.setFontSize(fontSize);
                         
-                        // Textos alineados
                         doc.text(item.entry, startX + 1.5, y + (rowHeight * 0.75));
                         doc.text(item.exit, startX + colEntryW + 1.5, y + (rowHeight * 0.75));
                         
-                        // Recortar nombre de película si es muy largo
                         let mName = item.movie;
                         if(mName.length > 22) mName = mName.substring(0, 20) + "...";
                         doc.text(mName, startX + colEntryW + colExitW + 2, y + (rowHeight * 0.75));
@@ -552,7 +605,6 @@
                     }
                 }
 
-                // Borde y Doblez
                 const h = maxRows * rowHeight;
                 const corner = 3.5; 
 
@@ -568,7 +620,6 @@
                 doc.line(startX + totalW - corner, startY + h - corner, startX + totalW, startY + h - corner);
             }
 
-            // Dibuja las dos copias idénticas centradas en la hoja
             drawBlock(25, validData);  
             drawBlock(160, validData); 
 
@@ -577,3 +628,4 @@
     </script>
 </body>
 </html>
+
