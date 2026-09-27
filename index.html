@@ -39,7 +39,7 @@
 <body>
 
     <div class="card">
-        <h1>Control Operativo (Sincronización por Comienzo de Función)</h1>
+        <h1>Control Operativo (Sincronización Avanzada)</h1>
         
         <div class="top-actions">
             <button onclick="processFiles()">1. Sincronizar y Extraer</button>
@@ -56,9 +56,9 @@
                 <input type="file" id="pdfInput" accept=".pdf">
             </div>
             <div class="control-item" style="flex: 100%;">
-                <label>2. Cargar Archivos Excel/CSV/TSV (Para extraer duración exacta)</label>
+                <label>2. Cargar Archivos CSV/Excel (Para extraer duración exacta)</label>
                 <input type="file" id="excelInput" accept=".xlsx, .xls, .csv, .tsv" multiple>
-                <small style="font-size: 11px; color: #666;">Salida = Comienzo Función + (CREDITS_TIME - SHOW_TIME).</small>
+                <small style="font-size: 11px; color: #666;">Salida = Comienzo Función (PDF) + [(CREDITS_TIME - SHOW_TIME) - 10 min].</small>
             </div>
             
             <div class="control-item">
@@ -70,7 +70,7 @@
                 <input type="time" id="startTimeFilter" value="">
             </div>
             <div class="control-item">
-                <label>Ajuste tiempo Salida (Min)</label>
+                <label>Ajuste extra Salida (Min)</label>
                 <input type="number" id="timeOffset" value="0">
             </div>
         </div>
@@ -111,7 +111,7 @@
             <thead>
                 <tr>
                     <th>Película (Solo Referencia)</th>
-                    <th>Comienzo Función</th>
+                    <th>Comienzo Función (PDF)</th>
                     <th>Salida Exacta (A imprimir)</th>
                     <th>Sala (A imprimir)</th>
                     <th>Acción</th>
@@ -145,13 +145,11 @@
             document.getElementById('altSettingsBox3').style.display = displayStyle;
         }
 
-        // LIMPIEZA MEJORADA PARA EMPAREJAR PDF CON EXCEL
         function normalizeName(name) {
             if (!name) return "";
-            // Borra solo las palabras exactas, dejando intacto el resto (ej. Spider-Man no se corta)
             let clean = name.replace(/\b(Esp|Sub|SP|4DX|3D|SCREENX|SJ|TCF|JR|FINB|MACROXE|XE|2D)\b/gi, '');
-            clean = clean.split('_')[0]; // Quita terminaciones raras del sistema
-            return clean.replace(/[^a-zA-Z0-9]/g, '').toLowerCase(); // Solo letras y números
+            clean = clean.split('_')[0]; 
+            return clean.replace(/[^a-zA-Z0-9]/g, '').toLowerCase(); 
         }
 
         function findDuration(pdfClean, movieDurations) {
@@ -165,10 +163,9 @@
                     if (k.startsWith(pdfStart)) return movieDurations[k];
                 }
             }
-            return 0; // Fallback a 0 si falla
+            return 0; 
         }
 
-        // MOTOR DE TIEMPO MEJORADO: Capaz de leer fechas largas como "2026-09-26 18:20:15"
         function getSecondsFromExcel(timeVal) {
             let hours = 0, minutes = 0, seconds = 0;
             if (timeVal instanceof Date && !isNaN(timeVal.getTime())) {
@@ -181,7 +178,6 @@
                 minutes = Math.floor((ts % 3600) / 60);
                 seconds = ts % 60;
             } else if (typeof timeVal === 'string') {
-                // Extrae horas, minutos y segundos exactos de la cadena
                 let timeMatch = timeVal.match(/\b(\d{1,2}):(\d{2}):(\d{2})\b/);
                 if (timeMatch) {
                     hours = parseInt(timeMatch[1]);
@@ -219,14 +215,14 @@
                 return alert("Debes subir el archivo PDF de la programación.");
             }
             if (!excelInput.files || excelInput.files.length === 0) {
-                return alert("Debes subir al menos un archivo Excel/CSV para calcular el tiempo a créditos.");
+                return alert("Debes subir al menos un archivo CSV/Excel para calcular los créditos.");
             }
 
             statusDiv.style.color = '#0056b3';
-            statusDiv.innerText = "Calculando tiempos de proyección (CREDITS_TIME - SHOW_TIME)...";
+            statusDiv.innerText = "Calculando tiempos de proyección con compensación de 10 min...";
 
             try {
-                // PASO 1: EXCEL (CALCULAR: CREDITS_TIME - SHOW_TIME)
+                // PASO 1: EXCEL -> (CREDITS_TIME - SHOW_TIME) - 10 Minutos
                 let movieDurations = {}; 
 
                 for (let i = 0; i < excelInput.files.length; i++) {
@@ -237,7 +233,6 @@
                     const json = XLSX.utils.sheet_to_json(sheet);
                     
                     json.forEach(row => {
-                        // Ahora prioriza la columna PLAYLIST porque es idéntica al título del PDF
                         let feature = row['PLAYLIST'] || row['FEATURE'] || row['Pelicula'];
                         let showTime = row['SHOW_TIME']; 
                         let creditsTime = row['CREDITS_TIME'];
@@ -248,20 +243,19 @@
                             
                             if (stSecs !== null && ctSecs !== null) {
                                 let diffSecs = ctSecs - stSecs;
-                                if (diffSecs < 0) diffSecs += 24 * 3600; // Por si cruza la medianoche
+                                if (diffSecs < 0) diffSecs += 24 * 3600; 
                                 
                                 let diffMins = Math.floor(diffSecs / 60);
-                                if ((diffSecs % 60) > 25) diffMins += 1; // Regla de redondeo a partir de 25seg
+                                if ((diffSecs % 60) > 25) diffMins += 1; 
+                                
+                                // REGLA APLICADA: Restar 10 minutos
+                                diffMins -= 10;
                                 
                                 let key = normalizeName(feature);
                                 movieDurations[key] = diffMins;
                             }
                         }
                     });
-                }
-
-                if (Object.keys(movieDurations).length === 0) {
-                    console.warn("No se pudieron extraer duraciones del archivo Excel/CSV.");
                 }
 
                 // PASO 2: LEER PDF
@@ -305,7 +299,7 @@
                         let cleanTitle = normalizeName(title);
                         let durationToCredits = findDuration(cleanTitle, movieDurations);
                         
-                        // CÁLCULO DE SALIDA
+                        // EL CÁLCULO DEFINITIVO:
                         let exitParsed = parsePdfTime(comienzoFuncionRaw, durationToCredits + offsetMinutes);
 
                         let roomNum = 0;
@@ -518,9 +512,6 @@
             }
         }
 
-        // ==========================================
-        // IMPRESIÓN DEL PDF CLÁSICO (SOLO SALIDA Y SALA)
-        // ==========================================
         function generatePDF() {
             const exits = document.querySelectorAll('.exit-input');
             const rooms = document.querySelectorAll('.room-input');
