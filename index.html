@@ -54,12 +54,11 @@
             <div class="control-item" style="flex: 100%;">
                 <label>1. Cargar Archivo PDF (Programación Oficial)</label>
                 <input type="file" id="pdfInput" accept=".pdf">
-                <small style="font-size: 11px; color: #666;">De aquí se tomará el título, la sala y el 'Comienzo Función'.</small>
             </div>
             <div class="control-item" style="flex: 100%;">
                 <label>2. Cargar Archivos Excel/CSV/TSV (Para extraer duración exacta)</label>
                 <input type="file" id="excelInput" accept=".xlsx, .xls, .csv, .tsv" multiple>
-                <small style="font-size: 11px; color: #666;">El cierre será: Comienzo Función (PDF) + (CREDITS_TIME - SHOW_TIME).</small>
+                <small style="font-size: 11px; color: #666;">Salida = Comienzo Función + (CREDITS_TIME - SHOW_TIME).</small>
             </div>
             
             <div class="control-item">
@@ -121,7 +120,7 @@
             <tbody id="tableBody">
             </tbody>
         </table>
-        <small style="color: #666; margin-top: 10px; display: block;">Nota: El PDF final solo imprimirá las columnas de Salida y Sala como lo solicitaste.</small>
+        <small style="color: #666; margin-top: 10px; display: block;">Nota: El PDF final solo imprimirá las columnas de Salida y Sala.</small>
     </div>
 
     <div class="card">
@@ -146,15 +145,13 @@
             document.getElementById('altSettingsBox3').style.display = displayStyle;
         }
 
-        function cleanExcelName(name) {
+        // LIMPIEZA MEJORADA PARA EMPAREJAR PDF CON EXCEL
+        function normalizeName(name) {
             if (!name) return "";
-            return name.split('_')[0].toLowerCase().replace(/[^a-z0-9]/g, '');
-        }
-
-        function cleanPdfName(name) {
-            if (!name) return "";
-            let clean = name.replace(/(Esp|Sub|SP|4DX|3D|SCREENX|SJ|TCF|JR|FINB)/gi, '');
-            return clean.replace(/[^a-zA-Z0-9]/g, '').toLowerCase();
+            // Borra solo las palabras exactas, dejando intacto el resto (ej. Spider-Man no se corta)
+            let clean = name.replace(/\b(Esp|Sub|SP|4DX|3D|SCREENX|SJ|TCF|JR|FINB|MACROXE|XE|2D)\b/gi, '');
+            clean = clean.split('_')[0]; // Quita terminaciones raras del sistema
+            return clean.replace(/[^a-zA-Z0-9]/g, '').toLowerCase(); // Solo letras y números
         }
 
         function findDuration(pdfClean, movieDurations) {
@@ -162,32 +159,54 @@
             for (let k of keys) {
                 if (pdfClean.includes(k) || k.includes(pdfClean)) return movieDurations[k];
             }
-            let pdfStart = pdfClean.substring(0, 5);
-            if (pdfStart.length >= 4) {
+            let pdfStart = pdfClean.substring(0, 6);
+            if (pdfStart.length >= 5) {
                 for (let k of keys) {
                     if (k.startsWith(pdfStart)) return movieDurations[k];
                 }
             }
-            return 0; 
+            return 0; // Fallback a 0 si falla
         }
 
-        function getMinutesFromExcel(timeVal) {
-            let hours = 0, minutes = 0;
+        // MOTOR DE TIEMPO MEJORADO: Capaz de leer fechas largas como "2026-09-26 18:20:15"
+        function getSecondsFromExcel(timeVal) {
+            let hours = 0, minutes = 0, seconds = 0;
             if (timeVal instanceof Date && !isNaN(timeVal.getTime())) {
                 hours = timeVal.getHours(); 
                 minutes = timeVal.getMinutes(); 
-            } else if (typeof timeVal === 'string' && timeVal.match(/^\d{1,2}:\d{2}/)) {
-                let p = timeVal.split(':'); 
-                hours = parseInt(p[0]); 
-                minutes = parseInt(p[1]);
+                seconds = timeVal.getSeconds();
             } else if (typeof timeVal === 'number') {
                 let ts = Math.round(timeVal * 24 * 3600);
                 hours = Math.floor(ts / 3600) % 24; 
                 minutes = Math.floor((ts % 3600) / 60);
+                seconds = ts % 60;
+            } else if (typeof timeVal === 'string') {
+                // Extrae horas, minutos y segundos exactos de la cadena
+                let timeMatch = timeVal.match(/\b(\d{1,2}):(\d{2}):(\d{2})\b/);
+                if (timeMatch) {
+                    hours = parseInt(timeMatch[1]);
+                    minutes = parseInt(timeMatch[2]);
+                    seconds = parseInt(timeMatch[3]);
+                } else {
+                    let hmMatch = timeVal.match(/\b(\d{1,2}):(\d{2})\b/);
+                    if (hmMatch) {
+                        hours = parseInt(hmMatch[1]);
+                        minutes = parseInt(hmMatch[2]);
+                    } else {
+                        let d = new Date(timeVal);
+                        if (!isNaN(d.getTime())) {
+                            hours = d.getHours();
+                            minutes = d.getMinutes();
+                            seconds = d.getSeconds();
+                        } else {
+                            return null;
+                        }
+                    }
+                }
             } else {
                 return null;
             }
-            return (hours * 60) + minutes;
+            return (hours * 3600) + (minutes * 60) + seconds;
         }
 
         async function processFiles() {
@@ -218,23 +237,31 @@
                     const json = XLSX.utils.sheet_to_json(sheet);
                     
                     json.forEach(row => {
-                        let feature = row['FEATURE'] || row['Pelicula'];
+                        // Ahora prioriza la columna PLAYLIST porque es idéntica al título del PDF
+                        let feature = row['PLAYLIST'] || row['FEATURE'] || row['Pelicula'];
                         let showTime = row['SHOW_TIME']; 
                         let creditsTime = row['CREDITS_TIME'];
                         
                         if (feature && showTime && creditsTime) {
-                            let stMins = getMinutesFromExcel(showTime);
-                            let ctMins = getMinutesFromExcel(creditsTime);
+                            let stSecs = getSecondsFromExcel(showTime);
+                            let ctSecs = getSecondsFromExcel(creditsTime);
                             
-                            if (stMins !== null && ctMins !== null) {
-                                let diffMins = ctMins - stMins;
-                                if (diffMins < 0) diffMins += 24 * 60; // Por si cruza la medianoche
+                            if (stSecs !== null && ctSecs !== null) {
+                                let diffSecs = ctSecs - stSecs;
+                                if (diffSecs < 0) diffSecs += 24 * 3600; // Por si cruza la medianoche
                                 
-                                let key = cleanExcelName(feature);
+                                let diffMins = Math.floor(diffSecs / 60);
+                                if ((diffSecs % 60) > 25) diffMins += 1; // Regla de redondeo a partir de 25seg
+                                
+                                let key = normalizeName(feature);
                                 movieDurations[key] = diffMins;
                             }
                         }
                     });
+                }
+
+                if (Object.keys(movieDurations).length === 0) {
+                    console.warn("No se pudieron extraer duraciones del archivo Excel/CSV.");
                 }
 
                 // PASO 2: LEER PDF
@@ -272,14 +299,13 @@
                         let timesWithObj = timeMatches.map(t => { return { raw: t, parsed: parsePdfTime(t, 0) }; });
                         timesWithObj.sort((a, b) => a.parsed.sortValue - b.parsed.sortValue);
                         
-                        // En el PDF, la 1era hora siempre es el "Comienzo Función"
                         let comienzoFuncionRaw = timesWithObj[0].raw; 
                         let entryParsed = parsePdfTime(comienzoFuncionRaw, 0);
                         
-                        let cleanTitle = cleanPdfName(title);
+                        let cleanTitle = normalizeName(title);
                         let durationToCredits = findDuration(cleanTitle, movieDurations);
                         
-                        // EL CÁLCULO PRINCIPAL: Salida = Comienzo Función + (Credits - Show Time) + Offset
+                        // CÁLCULO DE SALIDA
                         let exitParsed = parsePdfTime(comienzoFuncionRaw, durationToCredits + offsetMinutes);
 
                         let roomNum = 0;
@@ -399,7 +425,7 @@
             tr.innerHTML = `
                 <td><input type="text" class="edit-input movie-input" value="${movie}" readonly style="color: #666; font-size: 12px;"></td>
                 <td><input type="text" class="edit-input entry-input" value="${entry}" readonly style="color: #666;"></td>
-                <td><input type="text" class="edit-input exit-input" value="${exit}" style="font-weight: bold;"></td>
+                <td><input type="text" class="edit-input exit-input" value="${exit}" style="font-weight: bold; color: #d9534f;"></td>
                 <td><input type="text" class="edit-input room-input" value="${roomStr}" style="font-weight: bold;"></td>
                 <td><button onclick="this.parentElement.parentElement.remove()" class="btn-danger" style="padding: 5px 10px;">X</button></td>
             `;
@@ -493,7 +519,7 @@
         }
 
         // ==========================================
-        // IMPRESIÓN DEL PDF (DISEÑO CLÁSICO DE 2 COLUMNAS)
+        // IMPRESIÓN DEL PDF CLÁSICO (SOLO SALIDA Y SALA)
         // ==========================================
         function generatePDF() {
             const exits = document.querySelectorAll('.exit-input');
@@ -565,12 +591,8 @@
                         if (items[i].exit !== '') {
                             doc.setFont("helvetica", "normal");
                             doc.setFontSize(fontSize);
-                            
-                            // Imprime la Salida en la primera sub-columna
                             doc.text(items[i].exit, x + 2, y + (rowHeight * 0.75));
-                            
                             doc.setFont("helvetica", "bold");
-                            // Imprime la Sala en la segunda sub-columna
                             doc.text(items[i].roomStr.toString(), x + col1W + (col2W / 2), y + (rowHeight * 0.75), { align: "center" });
                         }
                     }
@@ -597,7 +619,7 @@
             drawBlock(26, validData);  
             drawBlock(166, validData); 
 
-            doc.save("horarios_cierres_calculado.pdf");
+            doc.save("horarios_cierres_exactos.pdf");
         }
     </script>
 </body>
