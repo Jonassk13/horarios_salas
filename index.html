@@ -56,9 +56,9 @@
                 <input type="file" id="pdfInput" accept=".pdf">
             </div>
             <div class="control-item" style="flex: 100%;">
-                <label>2. Cargar Archivos CSV/Excel (Para extraer duración exacta)</label>
+                <label>2. Cargar Archivos TSV/CSV/Excel (Para extraer duración de los créditos)</label>
                 <input type="file" id="excelInput" accept=".xlsx, .xls, .csv, .tsv" multiple>
-                <small style="font-size: 11px; color: #666;">Salida = Comienzo Función (PDF) + [(CREDITS_TIME - SHOW_TIME) - 10 min].</small>
+                <small style="font-size: 11px; color: #666;">Salida = Comienzo Función (PDF) + [(CREDITS_TIME - SHOW_TIME) - 10 min]. *Si la función no aparece, usará el tiempo de la misma película en otra sala.</small>
             </div>
             
             <div class="control-item">
@@ -133,9 +133,9 @@
     <script>
         pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.worker.min.js';
 
-        window.onload = function() {
+        document.addEventListener('DOMContentLoaded', function() {
             renderSavedSchedules();
-        };
+        });
 
         function toggleAltSettings() {
             const mode = document.getElementById('altMode').value;
@@ -165,6 +165,7 @@
             }
             return 0; 
         }
+
 
         function getSecondsFromExcel(timeVal) {
             let hours = 0, minutes = 0, seconds = 0;
@@ -205,6 +206,20 @@
             return (hours * 3600) + (minutes * 60) + seconds;
         }
 
+        function parseTSV(text) {
+            let lines = text.split('\n');
+            let headers = lines[0].split('\t').map(h => h.replace(/"/g, '').trim());
+            let data = [];
+            for(let i=1; i<lines.length; i++) {
+                if(!lines[i].trim()) continue;
+                let vals = lines[i].split('\t').map(v => v.replace(/"/g, '').trim());
+                let row = {};
+                headers.forEach((h, idx) => { row[h] = vals[idx]; });
+                data.push(row);
+            }
+            return data;
+        }
+
         async function processFiles() {
             const pdfInput = document.getElementById('pdfInput');
             const excelInput = document.getElementById('excelInput');
@@ -215,40 +230,52 @@
                 return alert("Debes subir el archivo PDF de la programación.");
             }
             if (!excelInput.files || excelInput.files.length === 0) {
-                return alert("Debes subir al menos un archivo CSV/Excel para calcular los créditos.");
+                return alert("Debes subir al menos un archivo TSV/CSV para calcular el tiempo a créditos.");
             }
 
             statusDiv.style.color = '#0056b3';
-            statusDiv.innerText = "Calculando tiempos de proyección con compensación de 10 min...";
+            statusDiv.innerText = "Calculando tiempos de proyección (SHOW_TIME a CREDITS_TIME - 10 min)...";
 
             try {
-                // PASO 1: EXCEL -> (CREDITS_TIME - SHOW_TIME) - 10 Minutos
+                //  TSV/CSV -> (CREDITS_TIME - SHOW_TIME) - 10 Minutos
                 let movieDurations = {}; 
 
                 for (let i = 0; i < excelInput.files.length; i++) {
                     const file = excelInput.files[i];
-                    const data = new Uint8Array(await file.arrayBuffer());
-                    const workbook = XLSX.read(data, {type: 'array', cellDates: true});
-                    const sheet = workbook.Sheets[workbook.SheetNames[0]];
-                    const json = XLSX.utils.sheet_to_json(sheet);
+                    let json = [];
+                    
+                    if (file.name.toLowerCase().endsWith('.tsv') || file.name.toLowerCase().endsWith('.csv')) {
+                        const text = await file.text();
+                        if (text.includes('\t')) {
+                            json = parseTSV(text);
+                        } else {
+                            const data = new Uint8Array(await file.arrayBuffer());
+                            const workbook = XLSX.read(data, {type: 'array', cellDates: true});
+                            json = XLSX.utils.sheet_to_json(workbook.Sheets[workbook.SheetNames[0]]);
+                        }
+                    } else {
+                        const data = new Uint8Array(await file.arrayBuffer());
+                        const workbook = XLSX.read(data, {type: 'array', cellDates: true});
+                        json = XLSX.utils.sheet_to_json(workbook.Sheets[workbook.SheetNames[0]]);
+                    }
                     
                     json.forEach(row => {
-                        let feature = row['PLAYLIST'] || row['FEATURE'] || row['Pelicula'];
-                        let showTime = row['SHOW_TIME']; 
-                        let creditsTime = row['CREDITS_TIME'];
+                        let feature = row['PLAYLIST'] || row['FEATURE'] || row['Pelicula'] || row['"PLAYLIST"'];
+                        let showTime = row['SHOW_TIME'] || row['"SHOW_TIME"']; 
+                        let creditsTime = row['CREDITS_TIME'] || row['"CREDITS_TIME"'];
                         
                         if (feature && showTime && creditsTime) {
+                            feature = feature.replace(/"/g, '');
                             let stSecs = getSecondsFromExcel(showTime);
                             let ctSecs = getSecondsFromExcel(creditsTime);
                             
                             if (stSecs !== null && ctSecs !== null) {
                                 let diffSecs = ctSecs - stSecs;
-                                if (diffSecs < 0) diffSecs += 24 * 3600; 
+                                if (diffSecs < 0) diffSecs += 24 * 3600;
                                 
                                 let diffMins = Math.floor(diffSecs / 60);
                                 if ((diffSecs % 60) > 25) diffMins += 1; 
                                 
-                                // REGLA APLICADA: Restar 10 minutos
                                 diffMins -= 10;
                                 
                                 let key = normalizeName(feature);
@@ -258,7 +285,6 @@
                     });
                 }
 
-                // PASO 2: LEER PDF
                 const pdfFile = pdfInput.files[0];
                 const pdfArrayBuffer = new Uint8Array(await pdfFile.arrayBuffer());
                 const pdf = await pdfjsLib.getDocument({data: pdfArrayBuffer}).promise;
@@ -293,13 +319,15 @@
                         let timesWithObj = timeMatches.map(t => { return { raw: t, parsed: parsePdfTime(t, 0) }; });
                         timesWithObj.sort((a, b) => a.parsed.sortValue - b.parsed.sortValue);
                         
+                        // En el PDF, la hora cronológicamente más temprana es siempre el 'Comienzo Función'
                         let comienzoFuncionRaw = timesWithObj[0].raw; 
                         let entryParsed = parsePdfTime(comienzoFuncionRaw, 0);
                         
+                        // Buscamos la duración en nuestro diccionario cruzado
                         let cleanTitle = normalizeName(title);
                         let durationToCredits = findDuration(cleanTitle, movieDurations);
                         
-                        // EL CÁLCULO DEFINITIVO:
+                        // EL CÁLCULO DEFINITIVO (Comienzo Función + Duración de créditos + Offset extra)
                         let exitParsed = parsePdfTime(comienzoFuncionRaw, durationToCredits + offsetMinutes);
 
                         let roomNum = 0;
@@ -426,6 +454,7 @@
             tbody.appendChild(tr);
         }
 
+      
         function getDBSchedules() {
             return JSON.parse(localStorage.getItem('cinepolis_schedules_hybrid')) || [];
         }
@@ -512,6 +541,7 @@
             }
         }
 
+    
         function generatePDF() {
             const exits = document.querySelectorAll('.exit-input');
             const rooms = document.querySelectorAll('.room-input');
@@ -582,7 +612,9 @@
                         if (items[i].exit !== '') {
                             doc.setFont("helvetica", "normal");
                             doc.setFontSize(fontSize);
+                            
                             doc.text(items[i].exit, x + 2, y + (rowHeight * 0.75));
+                            
                             doc.setFont("helvetica", "bold");
                             doc.text(items[i].roomStr.toString(), x + col1W + (col2W / 2), y + (rowHeight * 0.75), { align: "center" });
                         }
