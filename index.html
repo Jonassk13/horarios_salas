@@ -26,12 +26,15 @@
         .btn-warning:hover { background-color: #e0a800; }
         .btn-danger { background-color: #dc3545; }
         .btn-danger:hover { background-color: #c82333; }
+        .btn-info { background-color: #17a2b8; flex: 0 1 auto; height: 38px; }
+        .btn-info:hover { background-color: #138496; }
         #status { margin-bottom: 15px; font-weight: bold; color: #d9534f; text-align: center; }
         table { width: 100%; border-collapse: collapse; margin-top: 15px; }
         th, td { border: 1px solid #ddd; padding: 6px; text-align: center; }
         th { background-color: #e9ecef; }
         input.edit-input { width: 100%; border: none; background: transparent; font-size: 14px; text-align: center; }
         .alt-box { background: #eef2f5; border: 1px solid #c8d4dd; padding: 15px; border-radius: 6px; margin-top: 10px; }
+        .exc-box { background: #fff3cd; border: 1px solid #ffeeba; padding: 15px; border-radius: 6px; margin-top: 10px; }
         .db-list { list-style: none; padding: 0; }
         .db-item { background: #f8f9fa; border: 1px solid #ddd; padding: 10px 15px; margin-bottom: 8px; border-radius: 5px; display: flex; justify-content: space-between; align-items: center; }
     </style>
@@ -56,9 +59,8 @@
                 <input type="file" id="pdfInput" accept=".pdf">
             </div>
             <div class="control-item" style="flex: 100%;">
-                <label>2. Cargar Archivos TSV/CSV/Excel (Para extraer duración de los créditos)</label>
+                <label>2. Cargar Archivos TSV/CSV/Excel (Para extraer duración)</label>
                 <input type="file" id="excelInput" accept=".xlsx, .xls, .csv, .tsv" multiple>
-                <small style="font-size: 11px; color: #666;">Salida = Comienzo Función (PDF) + [(CREDITS_TIME - SHOW_TIME) - 10 min]. *Si la función no aparece, usará el tiempo de la misma película en otra sala.</small>
             </div>
             
             <div class="control-item">
@@ -70,9 +72,26 @@
                 <input type="time" id="startTimeFilter" value="">
             </div>
             <div class="control-item">
-                <label>Ajuste extra Salida (Min)</label>
+                <label>Ajuste extra global (Min)</label>
                 <input type="number" id="timeOffset" value="0">
             </div>
+        </div>
+
+        <div class="exc-box">
+            <h3 style="margin-top: 0; font-size: 16px; color: #856404;">Excepciones de Tiempo por Sala</h3>
+            <div style="display: flex; gap: 15px; flex-wrap: wrap; align-items: flex-end;">
+                <div class="control-item" style="min-width: 100px; flex: unset;">
+                    <label>Sala:</label>
+                    <input type="number" id="excRoom" min="1" placeholder="Ej. 15">
+                </div>
+                <div class="control-item" style="min-width: 120px; flex: unset;">
+                    <label>Minutos (+ o -):</label>
+                    <input type="number" id="excMins" placeholder="Ej. -10">
+                </div>
+                <button onclick="addRoomException()" class="btn-info">+ Agregar Regla</button>
+            </div>
+            <ul id="exceptionsList" style="list-style: none; padding: 0; margin-top: 10px; font-size: 14px;">
+            </ul>
         </div>
 
         <div class="alt-box">
@@ -120,7 +139,6 @@
             <tbody id="tableBody">
             </tbody>
         </table>
-        <small style="color: #666; margin-top: 10px; display: block;">Nota: El PDF final solo imprimirá las columnas de Salida y Sala.</small>
     </div>
 
     <div class="card">
@@ -133,9 +151,55 @@
     <script>
         pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.worker.min.js';
 
+        let specialRoomOffsets = {};
+
         document.addEventListener('DOMContentLoaded', function() {
             renderSavedSchedules();
+            renderExceptions();
         });
+
+        function addRoomException() {
+            let room = document.getElementById('excRoom').value;
+            let mins = document.getElementById('excMins').value;
+            
+            if (!room || !mins) {
+                return alert("Ingresa el número de la sala y los minutos a sumar/restar.");
+            }
+            
+            specialRoomOffsets[parseInt(room)] = parseInt(mins);
+            renderExceptions();
+            
+            document.getElementById('excRoom').value = '';
+            document.getElementById('excMins').value = '';
+        }
+
+        function removeRoomException(room) {
+            delete specialRoomOffsets[room];
+            renderExceptions();
+        }
+
+        function renderExceptions() {
+            let list = document.getElementById('exceptionsList');
+            list.innerHTML = '';
+            let keys = Object.keys(specialRoomOffsets);
+            
+            if (keys.length === 0) {
+                list.innerHTML = '<li style="color: #666;">No hay reglas específicas aplicadas.</li>';
+                return;
+            }
+            
+            keys.forEach(room => {
+                let mins = specialRoomOffsets[room];
+                let sign = mins > 0 ? '+' : '';
+                let textCol = mins > 0 ? '#856404' : '#d9534f';
+                list.innerHTML += `
+                    <li style="background: #fff; padding: 6px 12px; border: 1px solid #ddd; margin-bottom: 5px; border-radius: 4px; display: inline-flex; justify-content: space-between; align-items: center; min-width: 250px; margin-right: 10px;">
+                        <span>A la <b>Sala ${room}</b>: <strong style="color: ${textCol}">${sign}${mins} min</strong></span>
+                        <button onclick="removeRoomException('${room}')" style="background: #dc3545; border: none; color: white; padding: 2px 6px; cursor: pointer; border-radius: 3px; margin-left: 15px; font-weight: bold;">X</button>
+                    </li>
+                `;
+            });
+        }
 
         function toggleAltSettings() {
             const mode = document.getElementById('altMode').value;
@@ -165,7 +229,6 @@
             }
             return 0; 
         }
-
 
         function getSecondsFromExcel(timeVal) {
             let hours = 0, minutes = 0, seconds = 0;
@@ -223,7 +286,7 @@
         async function processFiles() {
             const pdfInput = document.getElementById('pdfInput');
             const excelInput = document.getElementById('excelInput');
-            const offsetMinutes = parseInt(document.getElementById('timeOffset').value) || 0;
+            const globalOffsetMinutes = parseInt(document.getElementById('timeOffset').value) || 0;
             const statusDiv = document.getElementById('status');
 
             if (!pdfInput.files || pdfInput.files.length === 0) {
@@ -237,7 +300,7 @@
             statusDiv.innerText = "Calculando tiempos de proyección (SHOW_TIME a CREDITS_TIME - 10 min)...";
 
             try {
-                //  TSV/CSV -> (CREDITS_TIME - SHOW_TIME) - 10 Minutos
+                // CREDITS_TIME - SHOW_TIME - 10 Minutos
                 let movieDurations = {}; 
 
                 for (let i = 0; i < excelInput.files.length; i++) {
@@ -265,13 +328,13 @@
                         let creditsTime = row['CREDITS_TIME'] || row['"CREDITS_TIME"'];
                         
                         if (feature && showTime && creditsTime) {
-                            feature = feature.replace(/"/g, '');
+                            feature = feature.replace(/"/g, ''); 
                             let stSecs = getSecondsFromExcel(showTime);
                             let ctSecs = getSecondsFromExcel(creditsTime);
                             
                             if (stSecs !== null && ctSecs !== null) {
                                 let diffSecs = ctSecs - stSecs;
-                                if (diffSecs < 0) diffSecs += 24 * 3600;
+                                if (diffSecs < 0) diffSecs += 24 * 3600; 
                                 
                                 let diffMins = Math.floor(diffSecs / 60);
                                 if ((diffSecs % 60) > 25) diffMins += 1; 
@@ -319,17 +382,12 @@
                         let timesWithObj = timeMatches.map(t => { return { raw: t, parsed: parsePdfTime(t, 0) }; });
                         timesWithObj.sort((a, b) => a.parsed.sortValue - b.parsed.sortValue);
                         
-                        // En el PDF, la hora cronológicamente más temprana es siempre el 'Comienzo Función'
                         let comienzoFuncionRaw = timesWithObj[0].raw; 
                         let entryParsed = parsePdfTime(comienzoFuncionRaw, 0);
                         
-                        // Buscamos la duración en nuestro diccionario cruzado
                         let cleanTitle = normalizeName(title);
                         let durationToCredits = findDuration(cleanTitle, movieDurations);
                         
-                        // EL CÁLCULO DEFINITIVO (Comienzo Función + Duración de créditos + Offset extra)
-                        let exitParsed = parsePdfTime(comienzoFuncionRaw, durationToCredits + offsetMinutes);
-
                         let roomNum = 0;
                         let roomMatch = salaStr.match(/\d+/);
                         if (roomMatch) {
@@ -338,6 +396,13 @@
                             if (salaStr.includes('MXE')) roomNum = 7;
                             else if (salaStr.includes('JR')) roomNum = 17;
                         }
+
+           
+                        let specificRoomOffset = specialRoomOffsets[roomNum] || 0;
+
+                        //  Comienzo + Duración + Offset Global + Offset Sala
+                        let totalExtraTime = durationToCredits + globalOffsetMinutes + specificRoomOffset;
+                        let exitParsed = parsePdfTime(comienzoFuncionRaw, totalExtraTime);
 
                         if (roomNum >= altStartRoom && exitParsed.sortValue >= minStartMinutes) {
                             rawData.push({
@@ -454,7 +519,6 @@
             tbody.appendChild(tr);
         }
 
-      
         function getDBSchedules() {
             return JSON.parse(localStorage.getItem('cinepolis_schedules_hybrid')) || [];
         }
@@ -541,7 +605,6 @@
             }
         }
 
-    
         function generatePDF() {
             const exits = document.querySelectorAll('.exit-input');
             const rooms = document.querySelectorAll('.room-input');
@@ -612,9 +675,7 @@
                         if (items[i].exit !== '') {
                             doc.setFont("helvetica", "normal");
                             doc.setFontSize(fontSize);
-                            
                             doc.text(items[i].exit, x + 2, y + (rowHeight * 0.75));
-                            
                             doc.setFont("helvetica", "bold");
                             doc.text(items[i].roomStr.toString(), x + col1W + (col2W / 2), y + (rowHeight * 0.75), { align: "center" });
                         }
