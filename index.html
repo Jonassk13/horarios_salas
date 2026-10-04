@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Módulo Operativo (Cierres por Comienzo de Función)</title>
+    <title>Módulo Operativo (Control Inteligente y Validaciones)</title>
     
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.min.js"></script>
@@ -13,12 +13,12 @@
         body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #f4f7f6; color: #333; max-width: 1000px; margin: 0 auto; padding: 20px; }
         .card { background: #fff; padding: 20px; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); margin-bottom: 20px; }
         h1, h2 { color: #0056b3; font-size: 22px; margin-top: 0; }
-        .top-actions { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 20px; background: #e9ecef; padding: 15px; border-radius: 8px; border: 1px solid #ced4da; }
+        .top-actions { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 20px; background: #e9ecef; padding: 15px; border-radius: 8px; border: 1px solid #ced4da; align-items: center; }
         .control-group { display: flex; gap: 15px; margin-bottom: 20px; flex-wrap: wrap; background: #f8f9fa; padding: 15px; border-radius: 6px; border: 1px solid #ddd; }
         .control-item { display: flex; flex-direction: column; flex: 1; min-width: 170px; }
         label { font-weight: bold; margin-bottom: 5px; font-size: 13px; }
         input, select { padding: 8px; border: 1px solid #ccc; border-radius: 4px; font-size: 14px; background: #fff; }
-        button { background-color: #0056b3; color: white; border: none; padding: 10px 15px; border-radius: 5px; cursor: pointer; font-size: 15px; font-weight: bold; transition: 0.2s; flex: 1; min-width: 150px; }
+        button { background-color: #0056b3; color: white; border: none; padding: 10px 15px; border-radius: 5px; cursor: pointer; font-size: 14px; font-weight: bold; transition: 0.2s; flex: 1; min-width: 140px; }
         button:hover { background-color: #004494; }
         .btn-success { background-color: #28a745; }
         .btn-success:hover { background-color: #218838; }
@@ -26,13 +26,18 @@
         .btn-warning:hover { background-color: #e0a800; }
         .btn-danger { background-color: #dc3545; }
         .btn-danger:hover { background-color: #c82333; }
-        .btn-info { background-color: #17a2b8; flex: 0 1 auto; height: 38px; }
+        .btn-info { background-color: #17a2b8; }
         .btn-info:hover { background-color: #138496; }
+        .btn-secondary { background-color: #6c757d; }
+        .btn-secondary:hover { background-color: #5a6268; }
+        
         #status { margin-bottom: 15px; font-weight: bold; color: #d9534f; text-align: center; }
         table { width: 100%; border-collapse: collapse; margin-top: 15px; }
         th, td { border: 1px solid #ddd; padding: 6px; text-align: center; }
         th { background-color: #e9ecef; }
         input.edit-input { width: 100%; border: none; background: transparent; font-size: 14px; text-align: center; }
+        .error-input { background-color: #ffcccc !important; border: 1px solid #d9534f !important; border-radius: 3px; }
+        
         .alt-box { background: #eef2f5; border: 1px solid #c8d4dd; padding: 15px; border-radius: 6px; margin-top: 10px; }
         .exc-box { background: #fff3cd; border: 1px solid #ffeeba; padding: 15px; border-radius: 6px; margin-top: 10px; }
         .db-list { list-style: none; padding: 0; }
@@ -42,13 +47,14 @@
 <body>
 
     <div class="card">
-        <h1>Control Operativo (Sincronización Avanzada)</h1>
+        <h1>Control Operativo (Cálculos y Validaciones)</h1>
         
         <div class="top-actions">
-            <button onclick="processFiles()">1. Sincronizar y Extraer</button>
+            <button onclick="processFiles()">1. Sincronizar Archivos</button>
             <button onclick="addRow('', '', '', '')">+ Fila Manual</button>
-            <button onclick="saveScheduleToDB()" class="btn-warning">Guardar en Historial</button>
-            <button onclick="generatePDF()" class="btn-success">Imprimir Formato Salas</button>
+            <button onclick="sortTableByExit()" class="btn-secondary">⇕ Acomodar por Salida</button>
+            <button onclick="saveScheduleToDB()" class="btn-warning">Guardar Historial</button>
+            <button onclick="generatePDF()" class="btn-success">Imprimir Formato</button>
         </div>
 
         <div id="status"></div>
@@ -59,7 +65,7 @@
                 <input type="file" id="pdfInput" accept=".pdf">
             </div>
             <div class="control-item" style="flex: 100%;">
-                <label>2. Cargar Archivos TSV/CSV/Excel (Para extraer duración)</label>
+                <label>2. Cargar Archivos TSV/CSV/Excel (Para duraciones)</label>
                 <input type="file" id="excelInput" accept=".xlsx, .xls, .csv, .tsv" multiple>
             </div>
             
@@ -88,10 +94,9 @@
                     <label>Minutos (+ o -):</label>
                     <input type="number" id="excMins" placeholder="Ej. -10">
                 </div>
-                <button onclick="addRoomException()" class="btn-info">+ Agregar Regla</button>
+                <button onclick="addRoomException()" class="btn-info" style="height: 38px; flex: 0 1 auto;">+ Agregar Regla</button>
             </div>
-            <ul id="exceptionsList" style="list-style: none; padding: 0; margin-top: 10px; font-size: 14px;">
-            </ul>
+            <ul id="exceptionsList" style="list-style: none; padding: 0; margin-top: 10px; font-size: 14px;"></ul>
         </div>
 
         <div class="alt-box">
@@ -129,8 +134,8 @@
         <table id="dataTable">
             <thead>
                 <tr>
-                    <th>Película (Solo Referencia)</th>
-                    <th>Comienzo Función (PDF)</th>
+                    <th>Película (Edita para buscar)</th>
+                    <th>Ingreso (Edita para calcular)</th>
                     <th>Salida Exacta (A imprimir)</th>
                     <th>Sala (A imprimir)</th>
                     <th>Acción</th>
@@ -139,6 +144,7 @@
             <tbody id="tableBody">
             </tbody>
         </table>
+        <small style="color: #666; margin-top: 10px; display: block;">Las celdas rojas indican que falta la hora de salida o que es idéntica a la entrada (Esas filas NO se imprimirán).</small>
     </div>
 
     <div class="card">
@@ -152,23 +158,21 @@
         pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.worker.min.js';
 
         let specialRoomOffsets = {};
+        let globalMovieDurations = {}; 
 
         document.addEventListener('DOMContentLoaded', function() {
             renderSavedSchedules();
             renderExceptions();
         });
 
+        // Excepciones 
+
         function addRoomException() {
             let room = document.getElementById('excRoom').value;
             let mins = document.getElementById('excMins').value;
-            
-            if (!room || !mins) {
-                return alert("Ingresa el número de la sala y los minutos a sumar/restar.");
-            }
-            
+            if (!room || !mins) return alert("Ingresa el número de la sala y los minutos a sumar/restar.");
             specialRoomOffsets[parseInt(room)] = parseInt(mins);
             renderExceptions();
-            
             document.getElementById('excRoom').value = '';
             document.getElementById('excMins').value = '';
         }
@@ -182,19 +186,17 @@
             let list = document.getElementById('exceptionsList');
             list.innerHTML = '';
             let keys = Object.keys(specialRoomOffsets);
-            
             if (keys.length === 0) {
-                list.innerHTML = '<li style="color: #666;">No hay reglas específicas aplicadas.</li>';
+                list.innerHTML = '<li style="color: #666;">No hay reglas específicas.</li>';
                 return;
             }
-            
             keys.forEach(room => {
                 let mins = specialRoomOffsets[room];
                 let sign = mins > 0 ? '+' : '';
                 let textCol = mins > 0 ? '#856404' : '#d9534f';
                 list.innerHTML += `
                     <li style="background: #fff; padding: 6px 12px; border: 1px solid #ddd; margin-bottom: 5px; border-radius: 4px; display: inline-flex; justify-content: space-between; align-items: center; min-width: 250px; margin-right: 10px;">
-                        <span>A la <b>Sala ${room}</b>: <strong style="color: ${textCol}">${sign}${mins} min</strong></span>
+                        <span>Sala ${room}: <strong style="color: ${textCol}">${sign}${mins} min</strong></span>
                         <button onclick="removeRoomException('${room}')" style="background: #dc3545; border: none; color: white; padding: 2px 6px; cursor: pointer; border-radius: 3px; margin-left: 15px; font-weight: bold;">X</button>
                     </li>
                 `;
@@ -216,56 +218,43 @@
             return clean.replace(/[^a-zA-Z0-9]/g, '').toLowerCase(); 
         }
 
-        function findDuration(pdfClean, movieDurations) {
-            let keys = Object.keys(movieDurations);
+        function findDuration(pdfClean) {
+            let keys = Object.keys(globalMovieDurations);
             for (let k of keys) {
-                if (pdfClean.includes(k) || k.includes(pdfClean)) return movieDurations[k];
+                if (pdfClean.includes(k) || k.includes(pdfClean)) return globalMovieDurations[k];
             }
             let pdfStart = pdfClean.substring(0, 6);
             if (pdfStart.length >= 5) {
                 for (let k of keys) {
-                    if (k.startsWith(pdfStart)) return movieDurations[k];
+                    if (k.startsWith(pdfStart)) return globalMovieDurations[k];
                 }
             }
-            return 0; 
+            return null; 
         }
 
         function getSecondsFromExcel(timeVal) {
             let hours = 0, minutes = 0, seconds = 0;
             if (timeVal instanceof Date && !isNaN(timeVal.getTime())) {
-                hours = timeVal.getHours(); 
-                minutes = timeVal.getMinutes(); 
-                seconds = timeVal.getSeconds();
+                hours = timeVal.getHours(); minutes = timeVal.getMinutes(); seconds = timeVal.getSeconds();
             } else if (typeof timeVal === 'number') {
                 let ts = Math.round(timeVal * 24 * 3600);
-                hours = Math.floor(ts / 3600) % 24; 
-                minutes = Math.floor((ts % 3600) / 60);
-                seconds = ts % 60;
+                hours = Math.floor(ts / 3600) % 24; minutes = Math.floor((ts % 3600) / 60); seconds = ts % 60;
             } else if (typeof timeVal === 'string') {
                 let timeMatch = timeVal.match(/\b(\d{1,2}):(\d{2}):(\d{2})\b/);
                 if (timeMatch) {
-                    hours = parseInt(timeMatch[1]);
-                    minutes = parseInt(timeMatch[2]);
-                    seconds = parseInt(timeMatch[3]);
+                    hours = parseInt(timeMatch[1]); minutes = parseInt(timeMatch[2]); seconds = parseInt(timeMatch[3]);
                 } else {
                     let hmMatch = timeVal.match(/\b(\d{1,2}):(\d{2})\b/);
                     if (hmMatch) {
-                        hours = parseInt(hmMatch[1]);
-                        minutes = parseInt(hmMatch[2]);
+                        hours = parseInt(hmMatch[1]); minutes = parseInt(hmMatch[2]);
                     } else {
                         let d = new Date(timeVal);
                         if (!isNaN(d.getTime())) {
-                            hours = d.getHours();
-                            minutes = d.getMinutes();
-                            seconds = d.getSeconds();
-                        } else {
-                            return null;
-                        }
+                            hours = d.getHours(); minutes = d.getMinutes(); seconds = d.getSeconds();
+                        } else { return null; }
                     }
                 }
-            } else {
-                return null;
-            }
+            } else { return null; }
             return (hours * 3600) + (minutes * 60) + seconds;
         }
 
@@ -283,26 +272,21 @@
             return data;
         }
 
+     
         async function processFiles() {
             const pdfInput = document.getElementById('pdfInput');
             const excelInput = document.getElementById('excelInput');
             const globalOffsetMinutes = parseInt(document.getElementById('timeOffset').value) || 0;
             const statusDiv = document.getElementById('status');
 
-            if (!pdfInput.files || pdfInput.files.length === 0) {
-                return alert("Debes subir el archivo PDF de la programación.");
-            }
-            if (!excelInput.files || excelInput.files.length === 0) {
-                return alert("Debes subir al menos un archivo TSV/CSV para calcular el tiempo a créditos.");
-            }
+            if (!pdfInput.files || pdfInput.files.length === 0) return alert("Sube el PDF.");
+            if (!excelInput.files || excelInput.files.length === 0) return alert("Sube los archivos TSV/CSV/Excel.");
 
             statusDiv.style.color = '#0056b3';
-            statusDiv.innerText = "Calculando tiempos de proyección (SHOW_TIME a CREDITS_TIME - 10 min)...";
+            statusDiv.innerText = "Calculando tiempos...";
+            globalMovieDurations = {}; 
 
             try {
-                // CREDITS_TIME - SHOW_TIME - 10 Minutos
-                let movieDurations = {}; 
-
                 for (let i = 0; i < excelInput.files.length; i++) {
                     const file = excelInput.files[i];
                     let json = [];
@@ -342,12 +326,13 @@
                                 diffMins -= 10;
                                 
                                 let key = normalizeName(feature);
-                                movieDurations[key] = diffMins;
+                                globalMovieDurations[key] = diffMins; // Guardar en RAM
                             }
                         }
                     });
                 }
 
+                //LEER PDF
                 const pdfFile = pdfInput.files[0];
                 const pdfArrayBuffer = new Uint8Array(await pdfFile.arrayBuffer());
                 const pdf = await pdfjsLib.getDocument({data: pdfArrayBuffer}).promise;
@@ -378,7 +363,6 @@
                     
                     let timeMatches = timesStr.match(/\d{2}:\d{2}[ap]\.?\s*m\./gi);
                     if (timeMatches && timeMatches.length >= 4) {
-                        
                         let timesWithObj = timeMatches.map(t => { return { raw: t, parsed: parsePdfTime(t, 0) }; });
                         timesWithObj.sort((a, b) => a.parsed.sortValue - b.parsed.sortValue);
                         
@@ -386,30 +370,39 @@
                         let entryParsed = parsePdfTime(comienzoFuncionRaw, 0);
                         
                         let cleanTitle = normalizeName(title);
-                        let durationToCredits = findDuration(cleanTitle, movieDurations);
+                        let durationToCredits = findDuration(cleanTitle);
                         
                         let roomNum = 0;
                         let roomMatch = salaStr.match(/\d+/);
-                        if (roomMatch) {
-                            roomNum = parseInt(roomMatch[0]);
-                        } else {
-                            if (salaStr.includes('MXE')) roomNum = 7;
-                            else if (salaStr.includes('JR')) roomNum = 17;
+                        if (roomMatch) roomNum = parseInt(roomMatch[0]);
+                        else if (salaStr.includes('MXE')) roomNum = 7;
+                        else if (salaStr.includes('JR')) roomNum = 17;
+
+                        // Cálculos y validaciones de hora de salida
+                        let exitDisplay = '';
+                        let exitSort = 0;
+                        let isValidExit = false;
+
+                        if (durationToCredits !== null) {
+                            let specificRoomOffset = specialRoomOffsets[roomNum] || 0;
+                            let totalExtraTime = durationToCredits + globalOffsetMinutes + specificRoomOffset;
+                            let exitParsed = parsePdfTime(comienzoFuncionRaw, totalExtraTime);
+                            
+                            exitDisplay = exitParsed.display;
+                            exitSort = exitParsed.sortValue;
+                            
+                            if (entryParsed.display === exitDisplay) {
+                                continue; 
+                            }
+                            isValidExit = true;
                         }
 
-           
-                        let specificRoomOffset = specialRoomOffsets[roomNum] || 0;
-
-                        //  Comienzo + Duración + Offset Global + Offset Sala
-                        let totalExtraTime = durationToCredits + globalOffsetMinutes + specificRoomOffset;
-                        let exitParsed = parsePdfTime(comienzoFuncionRaw, totalExtraTime);
-
-                        if (roomNum >= altStartRoom && exitParsed.sortValue >= minStartMinutes) {
+                        if (roomNum >= altStartRoom && entryParsed.sortValue >= minStartMinutes) {
                             rawData.push({
                                 movieName: title,
                                 entryTime: entryParsed.display,
-                                exitTime: exitParsed.display,
-                                sortValue: exitParsed.sortValue,
+                                exitTime: exitDisplay,
+                                sortValue: isValidExit ? exitSort : 99999, 
                                 roomNum: roomNum
                             });
                         }
@@ -418,69 +411,138 @@
 
                 if (rawData.length === 0) {
                     statusDiv.style.color = '#d9534f';
-                    statusDiv.innerText = "No se encontraron funciones que coincidan con los filtros.";
+                    statusDiv.innerText = "No se encontraron funciones.";
                     return;
                 }
 
                 rawData.sort((a, b) => a.sortValue - b.sortValue);
-
-                const altMode = document.getElementById('altMode').value;
-                const altStartRole = document.getElementById('altStartRole').value;
-                const timeCasetasStr = document.getElementById('timeCasetasFilter').value;
-                let minCasetasMinutes = 0;
-                if (timeCasetasStr) {
-                    let pC = timeCasetasStr.split(':');
-                    minCasetasMinutes = parseInt(pC[0]) * 60 + parseInt(pC[1]);
-                }
-
-                if (altMode === 'numeric') {
-                    rawData.forEach(d => {
-                        let forceSala = minCasetasMinutes > 0 && d.sortValue < minCasetasMinutes;
-                        let diff = d.roomNum - altStartRoom;
-                        let role = (diff % 2 === 0) ? altStartRole : (altStartRole === 'S' ? 'C' : 'S');
-                        d.displayRoom = forceSala ? `S-${d.roomNum}` : `${role}-${d.roomNum}`;
-                    });
-                } else if (altMode === 'chrono') {
-                    let toggle = (altStartRole === 'S'); 
-                    let alternatingStarted = false;
-
-                    rawData.forEach(d => {
-                        let forceSala = minCasetasMinutes > 0 && d.sortValue < minCasetasMinutes;
-                        if (!alternatingStarted && d.roomNum === altStartRoom) alternatingStarted = true;
-                        
-                        if (alternatingStarted) {
-                            let role = toggle ? 'S' : 'C';
-                            if (forceSala) {
-                                role = 'S';
-                            } else {
-                                toggle = !toggle; 
-                            }
-                            d.displayRoom = `${role}-${d.roomNum}`;
-                        } else {
-                            d.displayRoom = forceSala ? `S-${d.roomNum}` : d.roomNum.toString();
-                        }
-                    });
-                } else {
-                    rawData.forEach(d => d.displayRoom = d.roomNum.toString());
-                }
+                applyAlternation(rawData);
 
                 document.getElementById('tableBody').innerHTML = '';
                 rawData.forEach(d => addRow(d.movieName, d.entryTime, d.exitTime, d.displayRoom));
 
                 statusDiv.style.color = '#28a745';
-                statusDiv.innerText = `¡${rawData.length} salidas calculadas con éxito!`;
+                statusDiv.innerText = `¡${rawData.length} salidas procesadas!`;
                 document.getElementById('editorSection').style.display = 'block';
+                validateTable(); 
 
             } catch (error) {
                 console.error(error);
                 statusDiv.style.color = '#d9534f';
-                statusDiv.innerText = "Error crítico al procesar los archivos.";
+                statusDiv.innerText = "Error crítico al procesar.";
             }
         }
 
+
+        // btn ordenar tabla
+      
+        function sortTableByExit() {
+            let tbody = document.getElementById('tableBody');
+            let rows = Array.from(tbody.querySelectorAll('tr'));
+            
+            rows.sort((a, b) => {
+                let exitA = a.querySelector('.exit-input').value;
+                let exitB = b.querySelector('.exit-input').value;
+                
+                let valA = exitA ? parsePdfTime(exitA, 0).sortValue : 99999;
+                let valB = exitB ? parsePdfTime(exitB, 0).sortValue : 99999;
+                
+                return valA - valB;
+            });
+            
+            tbody.innerHTML = '';
+            rows.forEach(r => tbody.appendChild(r));
+        }
+
+        function applyAlternation(dataArray) {
+            const altStartRoom = parseInt(document.getElementById('altStartRoom').value) || 1;
+            const altMode = document.getElementById('altMode').value;
+            const altStartRole = document.getElementById('altStartRole').value;
+            const timeCasetasStr = document.getElementById('timeCasetasFilter').value;
+            let minCasetasMinutes = 0;
+            if (timeCasetasStr) {
+                let pC = timeCasetasStr.split(':');
+                minCasetasMinutes = parseInt(pC[0]) * 60 + parseInt(pC[1]);
+            }
+
+            if (altMode === 'numeric') {
+                dataArray.forEach(d => {
+                    let forceSala = minCasetasMinutes > 0 && d.sortValue < minCasetasMinutes;
+                    let diff = d.roomNum - altStartRoom;
+                    let role = (diff % 2 === 0) ? altStartRole : (altStartRole === 'S' ? 'C' : 'S');
+                    d.displayRoom = forceSala ? `S-${d.roomNum}` : `${role}-${d.roomNum}`;
+                });
+            } else if (altMode === 'chrono') {
+                let toggle = (altStartRole === 'S'); 
+                let alternatingStarted = false;
+                dataArray.forEach(d => {
+                    let forceSala = minCasetasMinutes > 0 && d.sortValue < minCasetasMinutes;
+                    if (!alternatingStarted && d.roomNum === altStartRoom) alternatingStarted = true;
+                    if (alternatingStarted) {
+                        let role = toggle ? 'S' : 'C';
+                        if (forceSala) role = 'S'; else toggle = !toggle; 
+                        d.displayRoom = `${role}-${d.roomNum}`;
+                    } else {
+                        d.displayRoom = forceSala ? `S-${d.roomNum}` : d.roomNum.toString();
+                    }
+                });
+            } else {
+                dataArray.forEach(d => d.displayRoom = d.roomNum.toString());
+            }
+        }
+
+
+        // saca lan hora de salida automatica si es puesta a mano
+        function autoCalcExit(element) {
+            let tr = element.closest('tr');
+            let movie = tr.querySelector('.movie-input').value;
+            let entry = tr.querySelector('.entry-input').value;
+            let exitInput = tr.querySelector('.exit-input');
+            let roomStr = tr.querySelector('.room-input').value;
+
+            if (movie && entry) {
+                let cleanTitle = normalizeName(movie);
+                let duration = findDuration(cleanTitle);
+                
+                if (duration !== null && duration > 0) {
+                    let globalOffset = parseInt(document.getElementById('timeOffset').value) || 0;
+                    let roomNum = parseInt(roomStr.match(/\d+/)?.[0] || 0);
+                    let specificRoomOffset = specialRoomOffsets[roomNum] || 0;
+                    
+                    let exitParsed = parsePdfTime(entry, duration + globalOffset + specificRoomOffset);
+                    if(exitParsed) {
+                        exitInput.value = exitParsed.display;
+                    }
+                } else {
+                    alert("Película no encontrada en la base cargada. Deberás ingresar la hora de salida manualmente.");
+                    exitInput.value = ''; 
+                }
+            }
+            validateTable();
+        }
+
+        // Validacion visual de fallas de salida de salas 
+        function validateTable() {
+            document.querySelectorAll('#tableBody tr').forEach(tr => {
+                let entry = tr.querySelector('.entry-input').value.trim();
+                let exitInput = tr.querySelector('.exit-input');
+                let exit = exitInput.value.trim();
+
+                exitInput.classList.remove('error-input');
+                
+                if (!exit) {
+                    exitInput.classList.add('error-input');
+                } else if (entry === exit && entry !== '') {
+                    exitInput.classList.add('error-input');
+                }
+            });
+        }
+
         function parsePdfTime(timeStr, addMins) {
+            if (!timeStr) return null;
             let isPM = timeStr.toLowerCase().includes('p');
             let parts = timeStr.match(/\d+/g);
+            if (!parts || parts.length < 2) return null;
             let hours = parseInt(parts[0]);
             let minutes = parseInt(parts[1]);
             
@@ -510,18 +572,20 @@
             const tbody = document.getElementById('tableBody');
             const tr = document.createElement('tr');
             tr.innerHTML = `
-                <td><input type="text" class="edit-input movie-input" value="${movie}" readonly style="color: #666; font-size: 12px;"></td>
-                <td><input type="text" class="edit-input entry-input" value="${entry}" readonly style="color: #666;"></td>
-                <td><input type="text" class="edit-input exit-input" value="${exit}" style="font-weight: bold; color: #d9534f;"></td>
-                <td><input type="text" class="edit-input room-input" value="${roomStr}" style="font-weight: bold;"></td>
-                <td><button onclick="this.parentElement.parentElement.remove()" class="btn-danger" style="padding: 5px 10px;">X</button></td>
+                <td><input type="text" class="edit-input movie-input" value="${movie}" onchange="autoCalcExit(this)"></td>
+                <td><input type="text" class="edit-input entry-input" value="${entry}" onchange="autoCalcExit(this)"></td>
+                <td><input type="text" class="edit-input exit-input" value="${exit}" oninput="validateTable()"></td>
+                <td><input type="text" class="edit-input room-input" value="${roomStr}"></td>
+                <td><button onclick="this.parentElement.parentElement.remove(); validateTable();" class="btn-danger" style="padding: 5px 10px;">X</button></td>
             `;
             tbody.appendChild(tr);
+            validateTable();
         }
 
-        function getDBSchedules() {
-            return JSON.parse(localStorage.getItem('cinepolis_schedules_hybrid')) || [];
-        }
+
+        // BDL
+    
+        function getDBSchedules() { return JSON.parse(localStorage.getItem('cinepolis_schedules_hybrid')) || []; }
 
         function saveScheduleToDB() {
             const title = document.getElementById('dayTitle').value || 'Sin Título';
@@ -541,20 +605,12 @@
                     });
                 }
             }
-
             if(currentData.length === 0) return alert("La tabla está vacía.");
 
-            const newRecord = {
-                id: Date.now(),
-                date: new Date().toLocaleDateString() + ' ' + new Date().toLocaleTimeString(),
-                title: title,
-                data: currentData
-            };
-
+            const newRecord = { id: Date.now(), date: new Date().toLocaleDateString() + ' ' + new Date().toLocaleTimeString(), title: title, data: currentData };
             let db = getDBSchedules();
             db.unshift(newRecord); 
             localStorage.setItem('cinepolis_schedules_hybrid', JSON.stringify(db));
-            
             alert("Horario guardado en el historial local.");
             renderSavedSchedules();
         }
@@ -562,25 +618,18 @@
         function renderSavedSchedules() {
             const db = getDBSchedules();
             const list = document.getElementById('savedSchedulesList');
-            if (db.length === 0) {
-                list.innerHTML = '<li>No hay horarios guardados.</li>';
-                return;
-            }
+            if (db.length === 0) { list.innerHTML = '<li>No hay horarios guardados.</li>'; return; }
             list.innerHTML = '';
             db.forEach(record => {
-                const li = document.createElement('li');
-                li.className = 'db-item';
-                li.innerHTML = `
-                    <div>
-                        <strong>${record.title}</strong><br>
-                        <small style="color: #666;">Guardado: ${record.date} | ${record.data.length} funciones</small>
-                    </div>
-                    <div style="display: flex; gap: 5px;">
-                        <button onclick="loadSchedule(${record.id})">Cargar a Tabla</button>
-                        <button onclick="deleteSchedule(${record.id})" class="btn-danger">Borrar</button>
-                    </div>
+                list.innerHTML += `
+                    <li class="db-item">
+                        <div><strong>${record.title}</strong><br><small style="color: #666;">Guardado: ${record.date} | ${record.data.length} funciones</small></div>
+                        <div style="display: flex; gap: 5px;">
+                            <button onclick="loadSchedule(${record.id})">Cargar a Tabla</button>
+                            <button onclick="deleteSchedule(${record.id})" class="btn-danger">Borrar</button>
+                        </div>
+                    </li>
                 `;
-                list.appendChild(li);
             });
         }
 
@@ -593,6 +642,7 @@
                 record.data.forEach(d => addRow(d.movie, d.entry, d.exit, d.room));
                 document.getElementById('editorSection').style.display = 'block';
                 window.scrollTo({ top: document.getElementById('editorSection').offsetTop, behavior: 'smooth' });
+                validateTable();
             }
         }
 
@@ -604,22 +654,25 @@
                 renderSavedSchedules();
             }
         }
-
+        // IMPRESIÓN DEL PDF
         function generatePDF() {
+            const entries = document.querySelectorAll('.entry-input');
             const exits = document.querySelectorAll('.exit-input');
             const rooms = document.querySelectorAll('.room-input');
             
             let validData = [];
             for (let i = 0; i < exits.length; i++) {
-                if (exits[i].value.trim() !== "" && rooms[i].value.trim() !== "") {
-                    validData.push({ 
-                        exit: exits[i].value.trim(), 
-                        roomStr: rooms[i].value.trim() 
-                    });
+                let ent = entries[i].value.trim();
+                let ex = exits[i].value.trim();
+                let rm = rooms[i].value.trim();
+                
+                // VALIDACIÓN DE IMPRESIÓN: Ignora filas vacías o donde Entrada == Salida
+                if (ex !== "" && rm !== "" && ent !== ex) {
+                    validData.push({ exit: ex, roomStr: rm });
                 }
             }
 
-            if(validData.length === 0) return alert("No hay datos válidos para imprimir.");
+            if(validData.length === 0) return alert("No hay datos válidos para imprimir. Revisa las celdas rojas.");
 
             const { jsPDF } = window.jspdf;
             const doc = new jsPDF({ orientation: 'l', unit: 'mm', format: 'letter' });
@@ -634,7 +687,6 @@
             function drawBlock(startX, blockData) {
                 let maxRows = Math.ceil(blockData.length / 2);
                 if (maxRows < 15) maxRows = 15; 
-                
                 let rowHeight = 5.5; 
                 let fontSize = 10;
                 
@@ -666,7 +718,6 @@
 
                 function drawSubCol(x, items) {
                     doc.setLineWidth(0.2); 
-                    
                     for (let i = 0; i < items.length; i++) {
                         let y = startY + (i * rowHeight);
                         doc.rect(x, y, col1W, rowHeight);
@@ -683,7 +734,6 @@
 
                     const h = items.length * rowHeight;
                     const corner = 3.5; 
-
                     doc.setLineWidth(0.8); 
                     doc.line(x, startY, x + subW, startY); 
                     doc.line(x, startY, x, startY + h); 
@@ -702,7 +752,6 @@
 
             drawBlock(26, validData);  
             drawBlock(166, validData); 
-
             doc.save("horarios_cierres_exactos.pdf");
         }
     </script>
