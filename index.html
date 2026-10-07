@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Módulo Operativo (Control Inteligente y Validaciones)</title>
+    <title>Módulo Operativo (Control Inteligente y Exportación)</title>
     
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.min.js"></script>
@@ -30,12 +30,16 @@
         .btn-info:hover { background-color: #138496; }
         .btn-secondary { background-color: #6c757d; }
         .btn-secondary:hover { background-color: #5a6268; }
+        .btn-primary { background-color: #007bff; }
+        .btn-primary:hover { background-color: #0056b3; }
         
         #status { margin-bottom: 15px; font-weight: bold; color: #d9534f; text-align: center; }
         table { width: 100%; border-collapse: collapse; margin-top: 15px; }
         th, td { border: 1px solid #ddd; padding: 6px; text-align: center; }
         th { background-color: #e9ecef; }
         input.edit-input { width: 100%; border: none; background: transparent; font-size: 14px; text-align: center; }
+        
+        input[type="time"] { font-family: monospace; font-size: 15px; cursor: pointer; }
         .error-input { background-color: #ffcccc !important; border: 1px solid #d9534f !important; border-radius: 3px; }
         
         .alt-box { background: #eef2f5; border: 1px solid #c8d4dd; padding: 15px; border-radius: 6px; margin-top: 10px; }
@@ -47,14 +51,16 @@
 <body>
 
     <div class="card">
-        <h1>Control Operativo (Cálculos y Validaciones)</h1>
+        <h1>Control Operativo (Cálculos y Exportación)</h1>
         
         <div class="top-actions">
             <button onclick="processFiles()">1. Sincronizar Archivos</button>
             <button onclick="addRow('', '', '', '')">+ Fila Manual</button>
+            <button onclick="exportToFile()" class="btn-primary">💾 Exportar .JSON</button>
+            <input type="file" id="importFile" accept=".json" style="display:none" onchange="importFromFile(event)">
+            <button onclick="document.getElementById('importFile').click()" class="btn-info">📂 Importar .JSON</button>
             <button onclick="sortTableByExit()" class="btn-secondary">⇕ Acomodar por Salida</button>
-            <button onclick="saveScheduleToDB()" class="btn-warning">Guardar Historial</button>
-            <button onclick="generatePDF()" class="btn-success">Imprimir Formato</button>
+            <button onclick="generateBothPDFs()" class="btn-success">🖨 Imprimir PDFs (Doble)</button>
         </div>
 
         <div id="status"></div>
@@ -71,7 +77,7 @@
             
             <div class="control-item">
                 <label>Título del día</label>
-                <input type="text" id="dayTitle" value="MARTES :)" placeholder="Ej. MARTES :)">
+                <input type="text" id="dayTitle" value="Buscando día..." placeholder="Ej. MARTES :)">
             </div>
             <div class="control-item">
                 <label>Filtro: Cierres desde (24h):</label>
@@ -135,7 +141,7 @@
             <thead>
                 <tr>
                     <th>Película (Edita para buscar)</th>
-                    <th>Ingreso (Edita para calcular)</th>
+                    <th>Ingreso (Formato 24h)</th>
                     <th>Salida Exacta (A imprimir)</th>
                     <th>Sala (A imprimir)</th>
                     <th>Acción</th>
@@ -148,9 +154,9 @@
     </div>
 
     <div class="card">
-        <h2>Historial de Horarios Guardados (Local)</h2>
+        <h2>Historial Temporal (Navegador)</h2>
         <ul class="db-list" id="savedSchedulesList">
-            <li>No hay horarios guardados en el navegador.</li>
+            <li>No hay horarios guardados temporalmente.</li>
         </ul>
     </div>
 
@@ -165,7 +171,105 @@
             renderExceptions();
         });
 
-        // Excepciones 
+     
+        function parseTimeUniversal(timeStr, addMins = 0) {
+            if (!timeStr) return null;
+            let hours = 0, minutes = 0;
+            
+            if (/^\d{2}:\d{2}$/.test(timeStr)) {
+                let parts = timeStr.split(':');
+                hours = parseInt(parts[0]);
+                minutes = parseInt(parts[1]);
+            } else {
+                let isPM = timeStr.toLowerCase().includes('p');
+                let isAM = timeStr.toLowerCase().includes('a');
+                let parts = timeStr.match(/\d+/g);
+                if (!parts || parts.length < 2) return null;
+                hours = parseInt(parts[0]);
+                minutes = parseInt(parts[1]);
+                
+                if (isPM && hours < 12) hours += 12;
+                if (isAM && hours === 12) hours = 0;
+            }
+            
+            let totalMins = (hours * 60) + minutes + addMins;
+            hours = Math.floor(totalMins / 60) % 24;
+            if (hours < 0) hours += 24;
+            minutes = Math.floor(totalMins % 60);
+            
+            let sortValue = (hours >= 0 && hours <= 3) ? hours + 24 : hours;
+            sortValue = sortValue * 60 + minutes;
+            
+            let h24 = hours < 10 ? '0' + hours : hours;
+            let m24 = minutes < 10 ? '0' + minutes : minutes;
+            let val24 = `${h24}:${m24}`;
+            
+            let ampm = hours >= 12 ? 'PM' : 'AM';
+            let h12 = hours % 12;
+            h12 = h12 ? h12 : 12;
+            let m12 = minutes < 10 ? '0' + minutes : minutes;
+            let val12 = `${h12}:${m12} ${ampm}`;
+            
+            return { val24: val24, val12: val12, sortValue: sortValue };
+        }
+
+        function exportToFile() {
+            const title = document.getElementById('dayTitle').value || 'Horario_Operativo';
+            const movies = document.querySelectorAll('.movie-input');
+            const entries = document.querySelectorAll('.entry-input');
+            const exits = document.querySelectorAll('.exit-input');
+            const rooms = document.querySelectorAll('.room-input');
+            
+            let currentData = [];
+            for (let i = 0; i < movies.length; i++) {
+                if (exits[i].value.trim() !== "" && rooms[i].value.trim() !== "") {
+                    currentData.push({
+                        movie: movies[i].value,
+                        entry: entries[i].value, 
+                        exit: exits[i].value,     
+                        room: rooms[i].value 
+                    });
+                }
+            }
+
+            if(currentData.length === 0) return alert("La tabla está vacía. No hay datos para exportar.");
+
+            const exportObj = {
+                title: document.getElementById('dayTitle').value,
+                dateExported: new Date().toLocaleDateString(),
+                data: currentData
+            };
+
+            const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(exportObj));
+            const downloadAnchorNode = document.createElement('a');
+            downloadAnchorNode.setAttribute("href", dataStr);
+            downloadAnchorNode.setAttribute("download", `Horario_${title.replace(/\s+/g, '_')}.json`);
+            document.body.appendChild(downloadAnchorNode);
+            downloadAnchorNode.click();
+            downloadAnchorNode.remove();
+        }
+
+        function importFromFile(e) {
+            const file = e.target.files[0];
+            if(!file) return;
+            
+            const reader = new FileReader();
+            reader.onload = function(evt) {
+                try {
+                    const obj = JSON.parse(evt.target.result);
+                    document.getElementById('dayTitle').value = obj.title || '';
+                    document.getElementById('tableBody').innerHTML = '';
+                    obj.data.forEach(d => addRow(d.movie, d.entry, d.exit, d.room));
+                    document.getElementById('editorSection').style.display = 'block';
+                    validateTable();
+                    alert("¡Horario cargado desde archivo exitosamente!");
+                } catch(err) {
+                    alert("Error al leer el archivo. Asegúrate de que es un archivo .json válido.");
+                }
+            };
+            reader.readAsText(file);
+            document.getElementById('importFile').value = '';
+        }
 
         function addRoomException() {
             let room = document.getElementById('excRoom').value;
@@ -272,7 +376,7 @@
             return data;
         }
 
-     
+    
         async function processFiles() {
             const pdfInput = document.getElementById('pdfInput');
             const excelInput = document.getElementById('excelInput');
@@ -287,6 +391,7 @@
             globalMovieDurations = {}; 
 
             try {
+                //guardar horas de salida localente
                 for (let i = 0; i < excelInput.files.length; i++) {
                     const file = excelInput.files[i];
                     let json = [];
@@ -323,16 +428,16 @@
                                 let diffMins = Math.floor(diffSecs / 60);
                                 if ((diffSecs % 60) > 25) diffMins += 1; 
                                 
-                                diffMins -= 10;
+                                diffMins -= 10; 
                                 
                                 let key = normalizeName(feature);
-                                globalMovieDurations[key] = diffMins; // Guardar en RAM
+                                globalMovieDurations[key] = diffMins; 
                             }
                         }
                     });
                 }
 
-                //LEER PDF
+      
                 const pdfFile = pdfInput.files[0];
                 const pdfArrayBuffer = new Uint8Array(await pdfFile.arrayBuffer());
                 const pdf = await pdfjsLib.getDocument({data: pdfArrayBuffer}).promise;
@@ -342,6 +447,18 @@
                     const page = await pdf.getPage(i);
                     const content = await page.getTextContent();
                     fullText += content.items.map(item => item.str).join(' ') + ' ';
+                }
+
+                // Sacar el dia auto
+                let dateMatch = fullText.match(/\b(\d{2})\/(\d{2})\/(\d{4})\b/);
+                if (dateMatch) {
+                    let d = parseInt(dateMatch[1], 10);
+                    let m = parseInt(dateMatch[2], 10) - 1; 
+                    let y = parseInt(dateMatch[3], 10);
+                    let dateObj = new Date(y, m, d);
+                    let diasSemana = ['DOMINGO', 'LUNES', 'MARTES', 'MIÉRCOLES', 'JUEVES', 'VIERNES', 'SÁBADO'];
+                    let dayName = diasSemana[dateObj.getDay()];
+                    document.getElementById('dayTitle').value = `${dayName} :)`;
                 }
 
                 const regex = /((?:\d{2}:\d{2}[ap]\.?\s*m\.\s*){4})(.*?)\s+(?:AA|A|B15|B|C|S\?)?\s*(SALA\s*\d+|SALA[A-Z\s]*\d+|MXE|SALA\s*JR)/gi;
@@ -363,11 +480,11 @@
                     
                     let timeMatches = timesStr.match(/\d{2}:\d{2}[ap]\.?\s*m\./gi);
                     if (timeMatches && timeMatches.length >= 4) {
-                        let timesWithObj = timeMatches.map(t => { return { raw: t, parsed: parsePdfTime(t, 0) }; });
+                        let timesWithObj = timeMatches.map(t => { return { raw: t, parsed: parseTimeUniversal(t, 0) }; });
                         timesWithObj.sort((a, b) => a.parsed.sortValue - b.parsed.sortValue);
                         
                         let comienzoFuncionRaw = timesWithObj[0].raw; 
-                        let entryParsed = parsePdfTime(comienzoFuncionRaw, 0);
+                        let entryParsed = parseTimeUniversal(comienzoFuncionRaw, 0); 
                         
                         let cleanTitle = normalizeName(title);
                         let durationToCredits = findDuration(cleanTitle);
@@ -378,20 +495,19 @@
                         else if (salaStr.includes('MXE')) roomNum = 7;
                         else if (salaStr.includes('JR')) roomNum = 17;
 
-                        // Cálculos y validaciones de hora de salida
                         let exitDisplay = '';
                         let exitSort = 0;
                         let isValidExit = false;
 
-                        if (durationToCredits !== null) {
+                        if (durationToCredits !== null && durationToCredits > 0) {
                             let specificRoomOffset = specialRoomOffsets[roomNum] || 0;
                             let totalExtraTime = durationToCredits + globalOffsetMinutes + specificRoomOffset;
-                            let exitParsed = parsePdfTime(comienzoFuncionRaw, totalExtraTime);
+                            let exitParsed = parseTimeUniversal(comienzoFuncionRaw, totalExtraTime);
                             
-                            exitDisplay = exitParsed.display;
+                            exitDisplay = exitParsed.val24; 
                             exitSort = exitParsed.sortValue;
                             
-                            if (entryParsed.display === exitDisplay) {
+                            if (entryParsed.val24 === exitDisplay) {
                                 continue; 
                             }
                             isValidExit = true;
@@ -400,7 +516,7 @@
                         if (roomNum >= altStartRoom && entryParsed.sortValue >= minStartMinutes) {
                             rawData.push({
                                 movieName: title,
-                                entryTime: entryParsed.display,
+                                entryTime: entryParsed.val24,
                                 exitTime: exitDisplay,
                                 sortValue: isValidExit ? exitSort : 99999, 
                                 roomNum: roomNum
@@ -434,8 +550,7 @@
         }
 
 
-        // btn ordenar tabla
-      
+        
         function sortTableByExit() {
             let tbody = document.getElementById('tableBody');
             let rows = Array.from(tbody.querySelectorAll('tr'));
@@ -444,8 +559,8 @@
                 let exitA = a.querySelector('.exit-input').value;
                 let exitB = b.querySelector('.exit-input').value;
                 
-                let valA = exitA ? parsePdfTime(exitA, 0).sortValue : 99999;
-                let valB = exitB ? parsePdfTime(exitB, 0).sortValue : 99999;
+                let valA = exitA ? parseTimeUniversal(exitA, 0).sortValue : 99999;
+                let valB = exitB ? parseTimeUniversal(exitB, 0).sortValue : 99999;
                 
                 return valA - valB;
             });
@@ -491,12 +606,10 @@
             }
         }
 
-
-        // saca lan hora de salida automatica si es puesta a mano
         function autoCalcExit(element) {
             let tr = element.closest('tr');
             let movie = tr.querySelector('.movie-input').value;
-            let entry = tr.querySelector('.entry-input').value;
+            let entry = tr.querySelector('.entry-input').value; 
             let exitInput = tr.querySelector('.exit-input');
             let roomStr = tr.querySelector('.room-input').value;
 
@@ -509,19 +622,18 @@
                     let roomNum = parseInt(roomStr.match(/\d+/)?.[0] || 0);
                     let specificRoomOffset = specialRoomOffsets[roomNum] || 0;
                     
-                    let exitParsed = parsePdfTime(entry, duration + globalOffset + specificRoomOffset);
+                    let exitParsed = parseTimeUniversal(entry, duration + globalOffset + specificRoomOffset);
                     if(exitParsed) {
-                        exitInput.value = exitParsed.display;
+                        exitInput.value = exitParsed.val24; 
                     }
                 } else {
-                    alert("Película no encontrada en la base cargada. Deberás ingresar la hora de salida manualmente.");
+                    alert("Película no encontrada en la base. Ingresa la hora de salida manualmente.");
                     exitInput.value = ''; 
                 }
             }
             validateTable();
         }
 
-        // Validacion visual de fallas de salida de salas 
         function validateTable() {
             document.querySelectorAll('#tableBody tr').forEach(tr => {
                 let entry = tr.querySelector('.entry-input').value.trim();
@@ -538,53 +650,20 @@
             });
         }
 
-        function parsePdfTime(timeStr, addMins) {
-            if (!timeStr) return null;
-            let isPM = timeStr.toLowerCase().includes('p');
-            let parts = timeStr.match(/\d+/g);
-            if (!parts || parts.length < 2) return null;
-            let hours = parseInt(parts[0]);
-            let minutes = parseInt(parts[1]);
-            
-            if (isPM && hours !== 12) hours += 12;
-            if (!isPM && hours === 12) hours = 0;
-            
-            let totalMins = (hours * 60) + minutes + addMins;
-            hours = Math.floor(totalMins / 60) % 24;
-            if (hours < 0) hours += 24;
-            minutes = totalMins % 60;
-            
-            let sortValue = (hours >= 0 && hours <= 3) ? hours + 24 : hours;
-            sortValue = sortValue * 60 + minutes;
-            
-            let ampm = hours >= 12 ? 'PM' : 'AM';
-            let fHours = hours % 12;
-            fHours = fHours ? fHours : 12;
-            let fMins = minutes < 10 ? '0' + minutes : minutes;
-            
-            return {
-                display: `${fHours}:${fMins} ${ampm}`,
-                sortValue: sortValue
-            };
-        }
-
         function addRow(movie, entry, exit, roomStr) {
             const tbody = document.getElementById('tableBody');
             const tr = document.createElement('tr');
             tr.innerHTML = `
-                <td><input type="text" class="edit-input movie-input" value="${movie}" onchange="autoCalcExit(this)"></td>
-                <td><input type="text" class="edit-input entry-input" value="${entry}" onchange="autoCalcExit(this)"></td>
-                <td><input type="text" class="edit-input exit-input" value="${exit}" oninput="validateTable()"></td>
-                <td><input type="text" class="edit-input room-input" value="${roomStr}"></td>
+                <td><input type="text" class="edit-input movie-input" value="${movie}" onchange="autoCalcExit(this)" placeholder="Ej. Cars"></td>
+                <td><input type="time" class="edit-input entry-input" value="${entry}" onchange="autoCalcExit(this)"></td>
+                <td><input type="time" class="edit-input exit-input" value="${exit}" oninput="validateTable()"></td>
+                <td><input type="text" class="edit-input room-input" value="${roomStr}" onchange="autoCalcExit(this)"></td>
                 <td><button onclick="this.parentElement.parentElement.remove(); validateTable();" class="btn-danger" style="padding: 5px 10px;">X</button></td>
             `;
             tbody.appendChild(tr);
             validateTable();
         }
 
-
-        // BDL
-    
         function getDBSchedules() { return JSON.parse(localStorage.getItem('cinepolis_schedules_hybrid')) || []; }
 
         function saveScheduleToDB() {
@@ -611,14 +690,14 @@
             let db = getDBSchedules();
             db.unshift(newRecord); 
             localStorage.setItem('cinepolis_schedules_hybrid', JSON.stringify(db));
-            alert("Horario guardado en el historial local.");
+            alert("Horario guardado temporalmente.");
             renderSavedSchedules();
         }
 
         function renderSavedSchedules() {
             const db = getDBSchedules();
             const list = document.getElementById('savedSchedulesList');
-            if (db.length === 0) { list.innerHTML = '<li>No hay horarios guardados.</li>'; return; }
+            if (db.length === 0) { list.innerHTML = '<li>No hay horarios guardados temporalmente.</li>'; return; }
             list.innerHTML = '';
             db.forEach(record => {
                 list.innerHTML += `
@@ -647,36 +726,20 @@
         }
 
         function deleteSchedule(id) {
-            if(confirm("¿Borrar este horario del historial?")) {
+            if(confirm("¿Borrar este horario?")) {
                 let db = getDBSchedules();
                 db = db.filter(r => r.id !== id);
                 localStorage.setItem('cinepolis_schedules_hybrid', JSON.stringify(db));
                 renderSavedSchedules();
             }
         }
-        // IMPRESIÓN DEL PDF
-        function generatePDF() {
-            const entries = document.querySelectorAll('.entry-input');
-            const exits = document.querySelectorAll('.exit-input');
-            const rooms = document.querySelectorAll('.room-input');
-            
-            let validData = [];
-            for (let i = 0; i < exits.length; i++) {
-                let ent = entries[i].value.trim();
-                let ex = exits[i].value.trim();
-                let rm = rooms[i].value.trim();
-                
-                // VALIDACIÓN DE IMPRESIÓN: Ignora filas vacías o donde Entrada == Salida
-                if (ex !== "" && rm !== "" && ent !== ex) {
-                    validData.push({ exit: ex, roomStr: rm });
-                }
-            }
 
-            if(validData.length === 0) return alert("No hay datos válidos para imprimir. Revisa las celdas rojas.");
+  
+        // crea el pdf de ambos turnos
 
+        function createPDFDoc(validData, titleText) {
             const { jsPDF } = window.jspdf;
             const doc = new jsPDF({ orientation: 'l', unit: 'mm', format: 'letter' });
-            const title = document.getElementById('dayTitle').value || 'MARTES :)';
             
             const col1W = 28; 
             const col2W = 14; 
@@ -712,7 +775,7 @@
 
                 doc.setFont("helvetica", "normal");
                 doc.setFontSize(10);
-                doc.text(`<3       ${title}`, startX + (totalW / 2), currentY + 4.2, { align: "center" });
+                doc.text(`<3       ${titleText}`, startX + (totalW / 2), currentY + 4.2, { align: "center" });
 
                 const startY = currentY + 8; 
 
@@ -752,7 +815,44 @@
 
             drawBlock(26, validData);  
             drawBlock(166, validData); 
-            doc.save("horarios_cierres_exactos.pdf");
+            return doc;
+        }
+
+        function generateBothPDFs() {
+            const entries = document.querySelectorAll('.entry-input');
+            const exits = document.querySelectorAll('.exit-input');
+            const rooms = document.querySelectorAll('.room-input');
+            
+            let allData = [];
+            for (let i = 0; i < exits.length; i++) {
+                let ent = entries[i].value.trim();
+                let ex = exits[i].value.trim(); 
+                let rm = rooms[i].value.trim();
+                
+                if (ex !== "" && rm !== "" && ent !== ex) {
+                    let parsedTime = parseTimeUniversal(ex, 0);
+                    allData.push({ 
+                        exit: parsedTime.val12, 
+                        roomStr: rm,
+                        sortValue: parsedTime ? parsedTime.sortValue : 99999
+                    });
+                }
+            }
+
+            if(allData.length === 0) return alert("No hay datos válidos para imprimir. Revisa las celdas rojas.");
+
+            const title = document.getElementById('dayTitle').value || 'MARTES :)';
+
+            let docAll = createPDFDoc(allData, title);
+            docAll.save("Cierres_Apertura_Completo.pdf");
+
+            let afternoonData = allData.filter(d => d.sortValue >= 930);
+            if(afternoonData.length > 0) {
+                let docAfternoon = createPDFDoc(afternoonData, title);
+                docAfternoon.save("Cierres_Tarde_330.pdf");
+            } else {
+                alert("No hay funciones después de las 3:30 PM para generar el segundo PDF.");
+            }
         }
     </script>
 </body>
